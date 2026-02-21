@@ -1,0 +1,192 @@
+import pandas as pd
+import numpy as np
+import faiss
+import sys
+import os
+import json
+import re
+from sentence_transformers import SentenceTransformer
+from dotenv import load_dotenv
+from google import genai
+
+load_dotenv()  # This loads .env file
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# Initialize Gemini client
+gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+
+# === CONFIG ===
+MODEL_DIR = '/Users/ayushbhardwaj/Documents/TarrifIQ/data'
+
+FAISS_INDEX_FILE = os.path.join(MODEL_DIR, "hs_index.faiss")
+HS_CODES_FILE = os.path.join(MODEL_DIR, "hs_codes.csv")
+
+MODEL_NAME = "all-MiniLM-L6-v2"
+TOP_K = 5
+
+
+def load_index():
+    """Load the FAISS index and HS code mapping from disk."""
+    index = faiss.read_index(FAISS_INDEX_FILE)
+    codes_df = pd.read_csv(HS_CODES_FILE)
+    return index, codes_df
+
+
+def search(query: str, index, codes_df, model, top_k=TOP_K):
+    """Search for the most similar HS codes given a free-text query."""
+    query_embedding = model.encode(
+        [query],
+        normalize_embeddings=True,
+    ).astype("float32")
+
+    scores, indices = index.search(query_embedding, top_k)
+
+    results = []
+    for rank, (idx, score) in enumerate(zip(indices[0], scores[0]), start=1):
+        row = codes_df.iloc[idx]
+        results.append({
+            "rank": rank,
+            "hs_code": row["hs_code"],
+            "description": row["embedding_text"],
+            "score": round(float(score), 4),
+        })
+    return results
+
+
+def rerank_with_llm(product_description, candidates):
+    """
+    Rerank HS candidates using Gemini 2.5 Flash.
+
+    candidates: list of dicts with keys:
+        - hs_code
+        - description
+        - score (optional)
+    """
+
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY not found. Check your .env file.")
+
+    if not candidates:
+        return None
+
+    # Build candidate text block
+    candidate_text = ""
+    for i, c in enumerate(candidates, 1):
+        candidate_text += (
+            f"{i}. HS Code: {c['hs_code']}\n"
+            f"   Description: {c['description']}\n\n"
+        )
+
+    prompt = f"""
+You are an expert in Harmonized System (HS) classification.
+
+Product description:
+"{product_description}"
+
+Candidate HS codes:
+
+{candidate_text}
+
+Instructions:
+- You must choose ONLY from the provided HS codes.
+- Do NOT invent new codes.
+- If two codes are close, choose the most specific one.
+- Return valid JSON only.
+- Confidence must be between 0 and 1.
+
+Return JSON in this format:
+
+{{
+  "primary_hs": "",
+  "secondary_hs": "",
+  "confidence": 0.0,
+  "reasoning": ""
+}}
+"""
+
+    try:
+        response = gemini_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config={
+                "temperature": 0,
+            },
+        )
+
+        content = response.text.strip()
+        # Remove markdown code fences if present
+        content = re.sub(r"^```(?:json)?\s*", "", content)
+        content = re.sub(r"\s*```$", "", content)
+
+    except Exception as e:
+        print("LLM request failed:", e)
+        return None
+
+    # Try parsing JSON
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        print("Invalid JSON returned by LLM:")
+        print(content)
+        return None
+
+    # Validate returned code (compare as strings to avoid int/str mismatch)
+    valid_codes = [str(c["hs_code"]) for c in candidates]
+
+    if str(parsed.get("primary_hs", "")) not in valid_codes:
+        print("LLM returned invalid HS code:", parsed.get("primary_hs"))
+        return None
+
+    # Ensure confidence is numeric and clipped
+    try:
+        confidence = float(parsed.get("confidence", 0))
+        parsed["confidence"] = max(0.0, min(1.0, confidence))
+    except:
+        parsed["confidence"] = 0.0
+
+    return parsed
+
+
+def main():
+    query = "Stainless steel kitchen knife with 20 cm blade."
+    top_k = 6
+
+    print("Loading model and index...")
+    model = SentenceTransformer(MODEL_NAME)
+    index, codes_df = load_index()
+
+    # Step 1: FAISS semantic search
+    print(f'\nSearching for: "{query}" (top {top_k})\n')
+    results = search(query, index, codes_df, model, top_k)
+
+    print(f"{'Rank':<6}{'HS Code':<12}{'Score':<10}{'Description'}")
+    print("-" * 80)
+    for r in results:
+        desc = r["description"]
+        print(f"{r['rank']:<6}{r['hs_code']:<12}{r['score']:<10}{desc}")
+
+    # Step 2: LLM reranking
+    print("\n" + "=" * 80)
+    print("Reranking with LLM...\n")
+    reranked = rerank_with_llm(query, results)
+
+    if reranked:
+        # Find embedding similarity for the primary HS code
+        primary_hs = str(reranked["primary_hs"])
+        embedding_score = next(
+            (r["score"] for r in results if str(r["hs_code"]) == primary_hs), None
+        )
+
+        print(f"  Primary HS:            {reranked['primary_hs']}")
+        print(f"  Secondary HS:          {reranked.get('secondary_hs', 'N/A')}")
+        print(f"  Embedding Similarity:  {embedding_score}")
+        print(f"  LLM Confidence:        {reranked['confidence']}")
+        print(f"  Reasoning:             {reranked['reasoning']}")
+    else:
+        print("  LLM reranking failed. Using FAISS top result as fallback.")
+        print(f"  Best match: {results[0]['hs_code']} (similarity: {results[0]['score']}) — {results[0]['description']}")
+
+
+if __name__ == "__main__":
+    main()
