@@ -2,6 +2,7 @@
 import PageShell from "@/components/PageShell";
 import { useState } from "react";
 import { Globe, Sparkles, Package, DollarSign, MapPin, Weight, CheckCircle, Truck, ShieldCheck, AlertTriangle, RefreshCw, ChevronDown } from "lucide-react";
+import { useTradeContext } from "@/context/TradeContext";
 
 /* ── helpers ── */
 const CATEGORIES = ["Select category", "Electronics & IT", "Apparel & Textiles", "Machinery", "Chemicals", "Food & Beverage", "Automotive Parts", "Medical Devices", "Furniture", "Toys & Games", "Other"];
@@ -84,11 +85,24 @@ function Field({ label, required, children }: { label: string; required?: boolea
 
 /* ── page ── */
 export default function TradeInput() {
+    const { setTradeData, ...globalData } = useTradeContext();
+
+    // Initialize local form state with global data
     const [f, setF] = useState({
-        name: "", category: CATEGORIES[0], customCategory: "", description: "", material: "", intendedUse: "",
-        value: "", currency: CURRENCIES[0], qty: "",
-        weight: "", dimensions: "",
-        origin: ORIGINS[0], dest: DESTS[0], transport: TRANSPORTS[0],
+        name: globalData.name || "",
+        category: globalData.category || CATEGORIES[0],
+        customCategory: "",
+        description: globalData.description || "",
+        material: globalData.material || "",
+        intendedUse: globalData.intendedUse || "",
+        value: globalData.value || "",
+        currency: globalData.currency || CURRENCIES[0],
+        qty: globalData.qty || "",
+        weight: globalData.weight || "",
+        dimensions: globalData.dimensions || "",
+        origin: globalData.origin || ORIGINS[0],
+        dest: globalData.dest || DESTS[0],
+        transport: globalData.transport || TRANSPORTS[0],
     });
     const set = (k: keyof typeof f) => (v: string) => { setF(p => ({ ...p, [k]: v })); setResult(null); };
 
@@ -100,6 +114,25 @@ export default function TradeInput() {
     function analyze() {
         if (!canRun || running) return;
         setRunning(true);
+
+        // Save to global context
+        setTradeData({
+            name: f.name,
+            category: f.category === "Other" ? f.customCategory : f.category,
+            description: f.description,
+            material: f.material,
+            intendedUse: f.intendedUse,
+            value: f.value,
+            currency: f.currency,
+            qty: f.qty,
+            weight: f.weight,
+            dimensions: f.dimensions,
+            origin: f.origin,
+            dest: f.dest,
+            transport: f.transport,
+            hsCode: null // reset it so backend classifies new item
+        });
+
         setTimeout(() => { setRunning(false); setResult("done"); }, 2000);
     }
 

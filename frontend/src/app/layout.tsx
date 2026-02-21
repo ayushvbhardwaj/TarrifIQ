@@ -1,3 +1,4 @@
+import { TradeProvider } from "@/context/TradeContext";
 import "./globals.css";
 
 export const metadata = {
@@ -17,7 +18,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 />
             </head>
             <body>
-                {children}
+                <TradeProvider>
+                    {children}
+                </TradeProvider>
             </body>
         </html>
     );

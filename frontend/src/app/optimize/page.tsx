@@ -1,134 +1,159 @@
 "use client";
 import PageShell from "@/components/PageShell";
+import TradeSummaryHeader from "@/components/TradeSummaryHeader";
 import { Sparkles, MapPin, TrendingUp, Zap, Target, ArrowRight } from "lucide-react";
-
-/* ── Data ───────────────────────────────────────── */
-const SOURCING_OPTIONS = [
-    {
-        country: "Vietnam",
-        risk: "Low Risk",
-        badge: "Best Choice",
-        duty: "0% (FTA)",
-        transit: "28 days",
-        compliance: 95,
-        rec: "Highly Recommended",
-        savings: 2500,
-        reduction: 18,
-        best: true,
-    },
-    {
-        country: "Bangladesh",
-        risk: "Medium Risk",
-        badge: null,
-        duty: "0% (GSP)",
-        transit: "35 days",
-        compliance: 82,
-        rec: "Good Alternative",
-        savings: 3200,
-        reduction: 23,
-        best: false,
-    },
-    {
-        country: "Thailand",
-        risk: "Low Risk",
-        badge: null,
-        duty: "5% (FTA)",
-        transit: "26 days",
-        compliance: 92,
-        rec: "Stable Option",
-        savings: 1800,
-        reduction: 13,
-        best: false,
-    },
-    {
-        country: "India",
-        risk: "Medium Risk",
-        badge: null,
-        duty: "8%",
-        transit: "32 days",
-        compliance: 88,
-        rec: "Consider",
-        savings: 1200,
-        reduction: 9,
-        best: false,
-    },
-];
-
-const LOGISTICS_ROUTES = [
-    {
-        name: "China → Singapore → USA",
-        desc: "Multimodal via transshipment hub",
-        cost: 12800,
-        transit: "33 days",
-        risk: "Low",
-        comp: "Verified",
-        baseline: "+$3100",
-        saveBadge: "Save $3,100",
-        best: false,
-    },
-    {
-        name: "China → USA (Direct Sea)",
-        desc: "Current route - baseline",
-        cost: 15900,
-        transit: "30 days",
-        risk: "Medium",
-        comp: "Standard",
-        baseline: "+$0",
-        saveBadge: null,
-        best: false,
-    },
-    {
-        name: "Vietnam → USA (Direct Sea)",
-        desc: "Alternative sourcing with FTA",
-        cost: 12400,
-        transit: "28 days",
-        risk: "Low",
-        comp: "FTA Certified",
-        baseline: "+$3500",
-        saveBadge: "Save $3,500",
-        best: true,
-    },
-];
-
-const STRATEGIES = [
-    {
-        title: "Duty Exposure Reduction",
-        impact: "High Impact",
-        desc: "Switch to GSP-eligible sourcing country to eliminate $1,650 in customs duties",
-        effort: "Medium",
-        time: "3-6 months",
-        save: "$1,650 per shipment",
-    },
-    {
-        title: "FTA Utilization",
-        impact: "High Impact",
-        desc: "Leverage US-Vietnam FTA for preferential tariff rates",
-        effort: "Low",
-        time: "1-2 months",
-        save: "$2,500 per shipment",
-    },
-    {
-        title: "Alternative Routing",
-        impact: "Medium Impact",
-        desc: "Transshipment through Singapore port to reduce handling costs",
-        effort: "Low",
-        time: "Immediate",
-        save: "$300 per shipment",
-    },
-    {
-        title: "Consolidation",
-        impact: "Medium Impact",
-        desc: "Combine multiple smaller shipments into bulk orders",
-        effort: "Medium",
-        time: "2-3 months",
-        save: "$800 per shipment",
-    },
-];
+import { useTradeContext } from "@/context/TradeContext";
 
 /* ── Component ──────────────────────────────────── */
 export default function Optimize() {
+    const { origin: ctxOrigin, dest: ctxDest, value: ctxValue, hsCode } = useTradeContext();
+
+    const origin = ctxOrigin || "China";
+    const dest = ctxDest || "USA";
+    const value = Number(ctxValue) || 10000;
+
+    // Derived dynamic values
+    const annualShipments = 12;
+    const monthlySavings = value * 0.25; // 25% savings
+    const annualSavings = monthlySavings * annualShipments;
+
+    const SOURCING_OPTIONS = [
+        {
+            country: "Vietnam",
+            risk: "Low Risk",
+            badge: "Best Choice",
+            duty: "0% (FTA)",
+            transit: "28 days",
+            compliance: 95,
+            rec: "Highly Recommended",
+            savings: value * 0.25,
+            reduction: 25,
+            best: true,
+        },
+        {
+            country: "Bangladesh",
+            risk: "Medium Risk",
+            badge: null,
+            duty: "0% (GSP)",
+            transit: "35 days",
+            compliance: 82,
+            rec: "Good Alternative",
+            savings: value * 0.32,
+            reduction: 32,
+            best: false,
+        },
+        {
+            country: "Thailand",
+            risk: "Low Risk",
+            badge: null,
+            duty: "5% (FTA)",
+            transit: "26 days",
+            compliance: 92,
+            rec: "Stable Option",
+            savings: value * 0.18,
+            reduction: 18,
+            best: false,
+        },
+        {
+            country: "India",
+            risk: "Medium Risk",
+            badge: null,
+            duty: "8%",
+            transit: "32 days",
+            compliance: 88,
+            rec: "Consider",
+            savings: value * 0.12,
+            reduction: 12,
+            best: false,
+        },
+    ];
+
+    const LOGISTICS_ROUTES = [
+        {
+            name: `${origin} → Singapore → ${dest}`,
+            desc: "Multimodal via transshipment hub",
+            cost: value * 1.28,
+            transit: "33 days",
+            risk: "Low",
+            comp: "Verified",
+            baseline: `+$${(value * 0.31).toLocaleString()}`,
+            saveBadge: `Save $${(value * 0.31).toLocaleString()}`,
+            best: false,
+        },
+        {
+            name: `${origin} → ${dest} (Direct Sea)`,
+            desc: "Current route - baseline",
+            cost: value * 1.59,
+            transit: "30 days",
+            risk: "Medium",
+            comp: "Standard",
+            baseline: "+$0",
+            saveBadge: null,
+            best: false,
+        },
+        {
+            name: `Vietnam → ${dest} (Direct Sea)`,
+            desc: "Alternative sourcing with FTA",
+            cost: value * 1.24,
+            transit: "28 days",
+            risk: "Low",
+            comp: "FTA Certified",
+            baseline: `-$${(value * 0.35).toLocaleString()}`,
+            saveBadge: `Save $${(value * 0.35).toLocaleString()}`,
+            best: true,
+        },
+    ];
+
+    const STRATEGIES = [
+        {
+            title: "Duty Exposure Reduction",
+            impact: "High Impact",
+            desc: `Switch to GSP-eligible sourcing country to eliminate $${(value * 0.165).toLocaleString()} in customs duties per shipment`,
+            effort: "Medium",
+            time: "3-6 months",
+            save: `$${(value * 0.165).toLocaleString()}/shipment`,
+        },
+        {
+            title: "FTA Utilization",
+            impact: "High Impact",
+            desc: `Leverage ${dest}-Vietnam FTA for preferential tariff rates for HS ${hsCode || "Codes"}`,
+            effort: "Low",
+            time: "1-2 months",
+            save: `$${(value * 0.25).toLocaleString()}/shipment`,
+        },
+        {
+            title: "Alternative Routing",
+            impact: "Medium Impact",
+            desc: "Transshipment through Singapore port to reduce handling costs",
+            effort: "Low",
+            time: "Immediate",
+            save: `$${(value * 0.03).toLocaleString()}/shipment`,
+        },
+        {
+            title: "Consolidation",
+            impact: "Medium Impact",
+            desc: "Combine multiple smaller shipments into bulk orders",
+            effort: "Medium",
+            time: "2-3 months",
+            save: `$${(value * 0.08).toLocaleString()}/shipment`,
+        },
+    ];
+
+    if (!ctxOrigin) {
+        return (
+            <PageShell title="Optimize">
+                <TradeSummaryHeader />
+                <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: 36, textAlign: "center", marginTop: 20 }}>
+                    <p style={{ fontSize: 14, color: "var(--text-muted)" }}>Please enter routing details and obtain an HS Code in the Trade Input page first.</p>
+                </div>
+            </PageShell>
+        );
+    }
+
     return (
         <PageShell title="Optimize">
+            <TradeSummaryHeader />
+
             {/* ── Page Header ─────────────────────── */}
             <div className="animate-fade-in-up" style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -141,7 +166,7 @@ export default function Optimize() {
             </div>
 
             {/* ── Engine Banner ────────────────────── */}
-            <div className="animate-fade-in-up delay-100" style={{ padding: "20px 24px", borderRadius: 12, background: "#fff", border: "1px solid #e9d5ff", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 2px 10px rgba(147, 51, 234, 0.03)", marginBottom: 16 }}>
+            <div className="animate-fade-in-up delay-100" style={{ padding: "20px 24px", marginTop: 24, borderRadius: 12, background: "#fff", border: "1px solid #e9d5ff", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 2px 10px rgba(147, 51, 234, 0.03)", marginBottom: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <Sparkles size={20} color="#9333ea" />
                     <div>
@@ -150,8 +175,8 @@ export default function Optimize() {
                     </div>
                 </div>
                 <div style={{ textAlign: "right", padding: "12px 20px", borderRadius: 10, background: "#f5f3ff", display: "inline-block" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#9333ea", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>OPTIMIZATION POTENTIAL</div>
-                    <div style={{ fontSize: 26, fontWeight: 900, color: "#9333ea", lineHeight: 1 }}>$3,500</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#9333ea", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>PER SHIPMENT OPTIMIZATION POTENTIAL</div>
+                    <div style={{ fontSize: 26, fontWeight: 900, color: "#9333ea", lineHeight: 1 }}>${monthlySavings.toLocaleString()}</div>
                 </div>
             </div>
 
@@ -162,20 +187,21 @@ export default function Optimize() {
                         <Target size={22} color="#fff" />
                     </div>
                     <div>
-                        <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                             <span style={{ fontSize: 11, fontWeight: 800, padding: "4px 10px", borderRadius: 4, background: "#059669", color: "#fff" }}>AI Recommended</span>
                             <span style={{ fontSize: 11, fontWeight: 600, padding: "4px 10px", borderRadius: 4, background: "#fff", border: "1px solid #cbd5e1", color: "var(--text-primary)" }}>Highest ROI</span>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", marginLeft: 4 }}>Model assumes {annualShipments}x monthly shipments of ${value.toLocaleString()} value.</span>
                         </div>
                         <h2 style={{ fontSize: 22, fontWeight: 800, color: "#064e3b", lineHeight: 1.2, marginBottom: 6 }}>Switch to Vietnam Sourcing</h2>
                         <p style={{ fontSize: 14, color: "#059669", fontWeight: 500, lineHeight: 1.5 }}>
-                            Migrate 60% of production from China to Vietnam to leverage US-Vietnam FTA benefits while maintaining quality standards.
+                            Migrate 60% of production from {origin} to Vietnam to leverage {dest}-Vietnam FTA benefits while maintaining quality standards.
                         </p>
                     </div>
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginTop: 20 }}>
                     {[
-                        { l: "Annual Savings", v: "$30,000" },
+                        { l: "Annual Savings", v: `$${annualSavings.toLocaleString()}` },
                         { l: "Implementation", v: "3-4 Mo" },
                         { l: "ROI Timeline", v: "18 Mo" },
                         { l: "Confidence", v: "92%" },
@@ -199,7 +225,7 @@ export default function Optimize() {
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
                     <MapPin size={18} color="#2563eb" />
                     <div>
-                        <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text-primary)" }}>Alternative Sourcing Country Analysis</div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text-primary)" }}>Alternative Sourcing Country Analysis (vs {origin})</div>
                         <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>Duty-optimized country recommendations with compliance verification</div>
                     </div>
                 </div>
@@ -247,7 +273,7 @@ export default function Optimize() {
                             </div>
                             {/* Right: Savings */}
                             <div style={{ textAlign: "right", borderLeft: "1px solid var(--border)", paddingLeft: 24, marginLeft: 24, minWidth: 120 }}>
-                                <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, marginBottom: 4 }}>Estimated Savings</div>
+                                <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, marginBottom: 4 }}>Estimated Savings/Shipment</div>
                                 <div style={{ fontSize: 24, fontWeight: 900, color: "#059669", lineHeight: 1 }}>${c.savings.toLocaleString()}</div>
                                 <div style={{ fontSize: 12, color: "#059669", fontWeight: 600, marginTop: 4 }}>{c.reduction}% reduction</div>
                             </div>
@@ -283,11 +309,11 @@ export default function Optimize() {
                             </div>
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
                                 {[
-                                    { l: "Total Cost", v: `$${r.cost.toLocaleString()}` },
+                                    { l: "Estimated Total Cost", v: `$${r.cost.toLocaleString()}` },
                                     { l: "Transit Time", v: r.transit },
                                     { l: "Risk Level", v: r.risk },
                                     { l: "Compliance", v: r.comp },
-                                    { l: "vs Baseline", v: r.baseline, c: r.baseline.startsWith("+") ? "#059669" : "var(--text-primary)" },
+                                    { l: "vs Baseline", v: r.baseline, c: r.baseline.startsWith("+") ? "#ef4444" : "#059669" },
                                 ].map(m => (
                                     <div key={m.l} style={{ padding: "12px 14px", borderRadius: 8, background: "#fff", border: "1px solid rgba(0,0,0,0.06)" }}>
                                         <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, marginBottom: 4 }}>{m.l}</div>
@@ -325,7 +351,7 @@ export default function Optimize() {
                                     <div style={{ fontWeight: 600, color: "var(--text-primary)" }}>{s.time}</div>
                                 </div>
                                 <div style={{ textAlign: "right" }}>
-                                    <div style={{ color: "var(--text-muted)", marginBottom: 2 }}>Savings</div>
+                                    <div style={{ color: "var(--text-muted)", marginBottom: 2 }}>Savings Potential</div>
                                     <div style={{ fontWeight: 700, color: "#059669" }}>{s.save}</div>
                                 </div>
                             </div>

@@ -1,40 +1,9 @@
 "use client";
 import PageShell from "@/components/PageShell";
-import { useState } from "react";
+import TradeSummaryHeader from "@/components/TradeSummaryHeader";
+import { useState, useEffect } from "react";
 import { Sparkles, ChevronRight, CheckCircle, RefreshCw, ShieldCheck, AlertTriangle, FileText, ExternalLink } from "lucide-react";
-
-const FEATURES = [
-    { label: "CATEGORY", val: "Textiles & Apparel", color: "#2563eb", bg: "#eff6ff" },
-    { label: "MATERIAL", val: "100% Cotton", color: "#059669", bg: "#f0fdf4" },
-    { label: "CONSTRUCTION", val: "Knitted / Crocheted", color: "#7c3aed", bg: "#faf5ff" },
-    { label: "GARMENT TYPE", val: "T-Shirt / Vest", color: "#d97706", bg: "#fffbeb" },
-    { label: "END USE", val: "Casual Wear", color: "#db2777", bg: "#fdf2f8" },
-    { label: "GENDER", val: "Unisex", color: "#64748b", bg: "#f8fafc" },
-];
-
-const RESULTS = [
-    {
-        code: "6109.10.00",
-        desc: "T-shirts, singlets and other vests, of cotton, knitted or crocheted",
-        duty: "16.5%", confidence: 94, risk: "Low" as const, recommended: true,
-        reasoning: "Product description matches \"Cotton T-Shirts\", material is 100% cotton, category is textiles. Strong NLP feature match.",
-        similar: 12, validated: true,
-    },
-    {
-        code: "6109.90.10",
-        desc: "T-shirts and other vests, knitted or crocheted, of other textile materials",
-        duty: "32.0%", confidence: 78, risk: "Medium" as const, recommended: false,
-        reasoning: "Alternative classification if cotton content is less than 50% or blended with synthetics.",
-        similar: 7, validated: false,
-    },
-    {
-        code: "6205.20.00",
-        desc: "Men's or boys' shirts of cotton",
-        duty: "19.7%", confidence: 45, risk: "High" as const, recommended: false,
-        reasoning: "Lower confidence: Classification depends on whether product has collar/buttons. Current description suggests casual tee.",
-        similar: 3, validated: false,
-    },
-];
+import { useTradeContext } from "@/context/TradeContext";
 
 const HISTORY = [
     { product: "Wireless Bluetooth Headphones", code: "8518.30", date: "Feb 18, 2026", confidence: 94, category: "Electronics" },
@@ -49,19 +18,67 @@ const riskStyle = {
 } as const;
 
 export default function HSCode() {
+    const { name, description, hsCode, setTradeData } = useTradeContext();
     const [loading, setLoading] = useState(false);
-    const [shown, setShown] = useState(true);
-    const [selected, setSelected] = useState<string | null>(null);
+
+    // API State
+    const [classificationResult, setClassificationResult] = useState<any>(null);
+    const [candidates, setCandidates] = useState<any[]>([]);
     const [override, setOverride] = useState("");
 
-    function classify() {
+    useEffect(() => {
+        if (!description) return; // Wait for context
+        classify();
+    }, [description]);
+
+    async function classify() {
         if (loading) return;
-        setLoading(true); setShown(false); setSelected(null);
-        setTimeout(() => { setLoading(false); setShown(true); }, 1800);
+        setLoading(true); setClassificationResult(null); setCandidates([]);
+
+        try {
+            const res = await fetch("http://localhost:8000/api/classify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ product_description: description })
+            });
+            const data = await res.json();
+
+            if (res.ok && data.reranked) {
+                setClassificationResult(data.reranked);
+                setCandidates(data.candidates || []);
+
+                // Auto-set the best HS code to global context
+                if (!hsCode && data.reranked.primary_hs) {
+                    setTradeData({ hsCode: String(data.reranked.primary_hs) });
+                }
+            } else {
+                console.error("Classification failed:", data);
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    // Mapping colors for dynamic features
+    const featureColors = [
+        { color: "#2563eb", bg: "#eff6ff" },
+        { color: "#059669", bg: "#f0fdf4" },
+        { color: "#7c3aed", bg: "#faf5ff" },
+        { color: "#d97706", bg: "#fffbeb" },
+        { color: "#db2777", bg: "#fdf2f8" },
+        { color: "#0891b2", bg: "#ecfeff" },
+    ];
+
+    function selectCode(code: string) {
+        setTradeData({ hsCode: String(code) });
     }
 
     return (
         <PageShell title="HS Code AI">
+            <TradeSummaryHeader />
+
             {/* Page header */}
             <div className="animate-fade-in-up" style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -73,192 +90,116 @@ export default function HSCode() {
                 </div>
             </div>
 
-
-
-            {/* Loading */}
-            {loading && (
-                <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: 36, textAlign: "center" }}>
-                    <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-                        <div style={{ width: 48, height: 48, borderRadius: 14, background: "rgba(124,58,237,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                            <Sparkles size={24} color="#7c3aed" />
-                        </div>
-                    </div>
-                    <div style={{ fontWeight: 700, fontSize: 16, color: "var(--text-primary)", marginBottom: 6 }}>Classifying your product…</div>
-                    <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Scanning 5,224 HS codes · Checking duty schedules · Verifying GSP eligibility</p>
+            {/* Empty State */}
+            {!description && !loading && !classificationResult && (
+                <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: 36, textAlign: "center", marginTop: 20 }}>
+                    <p style={{ fontSize: 14, color: "var(--text-muted)" }}>Please enter product details in the Trade Input page first.</p>
                 </div>
             )}
 
-            {shown && (<>
+            {/* Loading */}
+            {loading && (
+                <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: 36, textAlign: "center", marginTop: 24 }}>
+                    <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+                        <div style={{ width: 48, height: 48, borderRadius: 14, background: "rgba(124,58,237,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <Sparkles size={24} color="#7c3aed" className="animate-pulse" />
+                        </div>
+                    </div>
+                    <div style={{ fontWeight: 700, fontSize: 16, color: "var(--text-primary)", marginBottom: 6 }}>Classifying "{name || 'Product'}"…</div>
+                    <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Scanning FAISS HS indices · Running SentenceTransformer matching · Validating chapter notes</p>
+                </div>
+            )}
+
+            {classificationResult && !loading && (<>
                 {/* Extracted Product Features */}
-                <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: 24 }}>
+                <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: 24, marginTop: 24 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
                         <Sparkles size={16} color="#7c3aed" />
-                        <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>Extracted Product Features</span>
+                        <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>Extracted AI Features</span>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-                        {FEATURES.map(f => (
-                            <div key={f.label} style={{ padding: "14px 16px", borderRadius: 10, background: f.bg, border: `1px solid ${f.color}22` }}>
-                                <div style={{ fontSize: 10, fontWeight: 800, color: f.color, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 8 }}>{f.label}</div>
-                                <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>{f.val}</div>
-                            </div>
-                        ))}
+                        {classificationResult.extracted_features && Object.entries(classificationResult.extracted_features).map(([key, val], idx) => {
+                            const fColor = featureColors[idx % featureColors.length];
+                            return (
+                                <div key={key} style={{ padding: "14px 16px", borderRadius: 10, background: fColor.bg, border: `1px solid ${fColor.color}22` }}>
+                                    <div style={{ fontSize: 10, fontWeight: 800, color: fColor.color, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 8 }}>{key.replace(/_/g, " ")}</div>
+                                    <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>{String(val)}</div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
 
-                {/* HS Code Result Cards */}
-                {RESULTS.map(r => {
-                    const rs = riskStyle[r.risk];
-                    const isSelected = selected === r.code;
-                    const barColor = r.confidence > 85 ? "#0f172a" : r.confidence > 60 ? "#92400e" : "#991b1b";
-                    return (
-                        <div key={r.code} className="glass-card card-shadow animate-fade-in-up" style={{
-                            padding: "22px 24px",
-                            borderLeft: `4px solid ${r.recommended ? "#059669" : r.risk === "High" ? "#dc2626" : "#d97706"}`,
-                            background: "#fff",
-                            border: `1px solid ${isSelected ? "rgba(37,99,235,0.3)" : "var(--border)"}`,
-                            borderLeftWidth: 4,
-                            borderLeftStyle: "solid",
-                            borderLeftColor: r.recommended ? "#059669" : r.risk === "High" ? "#dc2626" : "#d97706",
-                        }}>
-                            {/* Top row */}
-                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                                    <span style={{ fontFamily: "monospace", fontWeight: 900, fontSize: 22, color: "#0f172a" }}>{r.code}</span>
-                                    {r.recommended && (
-                                        <span style={{ fontSize: 12, fontWeight: 700, padding: "4px 12px", borderRadius: 99, background: "#059669", color: "#fff" }}>
-                                            ✓ Recommended
-                                        </span>
-                                    )}
-                                    <span style={{ fontSize: 12, fontWeight: 700, padding: "4px 12px", borderRadius: 99, background: rs.bg, color: rs.color }}>
-                                        {rs.label}
-                                    </span>
-                                </div>
-                                <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 16 }}>
-                                    <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Duty Rate</div>
-                                    <div style={{ fontSize: 26, fontWeight: 900, color: "#7c3aed", lineHeight: 1.1 }}>{r.duty}</div>
-                                </div>
-                            </div>
-
-                            {/* Description */}
-                            <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>{r.desc}</p>
-
-                            {/* Confidence bar */}
-                            <div style={{ marginBottom: 16 }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
-                                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>AI Confidence Score</span>
-                                    <span style={{ fontSize: 13, fontWeight: 800, color: barColor }}>{r.confidence}%</span>
-                                </div>
-                                <div style={{ height: 10, borderRadius: 99, background: "#e2e8f0", overflow: "hidden" }}>
-                                    <div style={{ height: "100%", width: `${r.confidence}%`, background: barColor, borderRadius: 99 }} />
-                                </div>
-                            </div>
-
-                            {/* Reasoning */}
-                            <div style={{ padding: "12px 16px", borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", marginBottom: 14 }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                                    <Sparkles size={13} color="#7c3aed" />
-                                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>AI Reasoning &amp; Explainability</span>
-                                </div>
-                                <p style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6 }}>{r.reasoning}</p>
-                            </div>
-
-                            {/* Meta + actions */}
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                                    <span style={{ fontSize: 13, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
-                                        <FileText size={13} /> {r.similar} similar products matched
-                                    </span>
-                                    {r.validated && (
-                                        <span style={{ fontSize: 13, color: "#059669", display: "flex", alignItems: "center", gap: 5, fontWeight: 600 }}>
-                                            <CheckCircle size={13} /> Validated by rule-based engine
-                                        </span>
-                                    )}
-                                </div>
-                                <div style={{ display: "flex", gap: 8 }}>
-                                    <button onClick={() => setSelected(r.code)} style={{ padding: "9px 18px", borderRadius: 8, background: isSelected ? "#059669" : "#16a34a", border: "none", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-                                        {isSelected ? <><CheckCircle size={13} /> Selected</> : "Select This Code"}
-                                    </button>
-                                    <button style={{ padding: "9px 16px", borderRadius: 8, background: "#fff", border: "1.5px solid #cbd5e1", color: "var(--text-muted)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
-                                        View Tariff Schedule
-                                    </button>
-
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
-
-                {/* Bottom row */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                    {/* Manual Override */}
-                    <div className="animate-fade-in-up" style={{ padding: 22, borderRadius: 14, background: "#fffbeb", border: "1.5px solid #fcd34d" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                            <AlertTriangle size={16} color="#d97706" />
-                            <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>Manual HS Code Override</span>
-                        </div>
-                        <p style={{ fontSize: 13, color: "#b45309", lineHeight: 1.6, marginBottom: 14 }}>
-                            You can manually override the AI classification, but be aware of potential compliance risks and duty impacts.
-                        </p>
-                        <div style={{ display: "flex", gap: 8 }}>
-                            <input
-                                value={override} onChange={e => setOverride(e.target.value)}
-                                placeholder="Enter HS Code (e.g., 6109.10.00)"
-                                style={{ flex: 1, padding: "10px 14px", borderRadius: 8, border: "1.5px solid #fcd34d", background: "#fff", color: "var(--text-primary)", fontSize: 13, outline: "none", fontFamily: "monospace", fontWeight: 600 }}
-                            />
-                            <button style={{ padding: "10px 18px", borderRadius: 8, background: "#d97706", border: "none", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
-                                Override &amp; Analyze Impact
-                            </button>
+                {/* Main AI Pick */}
+                <div className="glass-card card-shadow animate-fade-in-up" style={{
+                    padding: "22px 24px",
+                    background: "#fff",
+                    borderLeftWidth: 4,
+                    borderLeftStyle: "solid",
+                    borderLeftColor: "#059669",
+                    borderColor: "var(--border)",
+                    marginTop: 24
+                }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                            <span style={{ fontFamily: "monospace", fontWeight: 900, fontSize: 26, color: "#0f172a" }}>{classificationResult.primary_hs}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, padding: "4px 12px", borderRadius: 99, background: "#059669", color: "#fff" }}>
+                                ✓ Best Match
+                            </span>
                         </div>
                     </div>
 
-                    {/* Risk Assessment */}
-                    <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: 22 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-                            <ShieldCheck size={16} color="#2563eb" />
-                            <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>Misclassification Risk Assessment</span>
+                    {/* Confidence bar */}
+                    <div style={{ marginBottom: 16 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>LLM Confidence Score</span>
+                            <span style={{ fontSize: 13, fontWeight: 800, color: "#059669" }}>{classificationResult.confidence_score}/100</span>
                         </div>
-                        {/* Overall */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderRadius: 10, background: "#f0fdf4", border: "1px solid #bbf7d0", marginBottom: 16 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                <CheckCircle size={20} color="#059669" />
-                                <div>
-                                    <div style={{ fontSize: 14, fontWeight: 800, color: "#059669" }}>Overall Risk: LOW</div>
-                                    <div style={{ fontSize: 12, color: "#059669", fontWeight: 500 }}>Classification is highly defensible with strong supporting evidence</div>
-                                </div>
-                            </div>
-                            <div style={{ textAlign: "right" }}>
-                                <div style={{ fontSize: 24, fontWeight: 900, color: "#059669" }}>8.2/10</div>
-                                <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Defense Score</div>
-                            </div>
+                        <div style={{ height: 10, borderRadius: 99, background: "#e2e8f0", overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${classificationResult.confidence_score}%`, background: "#059669", borderRadius: 99 }} />
                         </div>
-                        {/* Two-col bars */}
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-                            {[{ label: "Customs Dispute Likelihood", val: 12, color: "#0f172a" }, { label: "Audit Preparedness", val: 94, color: "#0f172a" }].map(b => (
-                                <div key={b.label}>
-                                    <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, marginBottom: 6 }}>{b.label}</div>
-                                    <div style={{ height: 8, borderRadius: 99, background: "#e2e8f0", overflow: "hidden", marginBottom: 4 }}>
-                                        <div style={{ height: "100%", width: `${b.val}%`, background: b.color, borderRadius: 99 }} />
+                    </div>
+
+                    {/* Reasoning */}
+                    <div style={{ padding: "12px 16px", borderRadius: 10, background: "#f8fafc", border: "1px solid #e2e8f0", marginBottom: 14 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                            <Sparkles size={13} color="#7c3aed" />
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>Classification Reasoning</span>
+                        </div>
+                        <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>{classificationResult.reasoning}</p>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <button onClick={() => selectCode(String(classificationResult.primary_hs))} style={{ padding: "9px 18px", borderRadius: 8, background: hsCode === String(classificationResult.primary_hs) ? "#059669" : "#16a34a", border: "none", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                            {hsCode === String(classificationResult.primary_hs) ? <><CheckCircle size={13} /> Selected</> : "Confirm This Code"}
+                        </button>
+                    </div>
+                </div>
+
+                {/* Secondary Candidates List */}
+                {candidates && candidates.length > 0 && (
+                    <div className="glass-card card-shadow animate-fade-in-up delay-300" style={{ padding: 24, marginTop: 24 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
+                            <FileText size={16} color="#0f172a" />
+                            <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>Alternative Validated Candidates</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {candidates.map((c, idx) => (
+                                <div key={c.hs_code} style={{ display: "flex", alignItems: "center", padding: "14px 16px", borderRadius: 10, border: "1.5px solid var(--border)", background: "var(--bg-base)", cursor: "pointer", transition: "border-color 0.15s" }}
+                                    onClick={() => selectCode(String(c.hs_code))}
+                                    onMouseEnter={e => (e.currentTarget.style.borderColor = "#7c3aed")}
+                                    onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--border)")}>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{c.description}</div>
+                                        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>Option #{idx + 1}</div>
                                     </div>
-                                    <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text-primary)" }}>{b.val}%</div>
-                                </div>
-                            ))}
-                        </div>
-                        {/* References */}
-                        <div style={{ paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>Global Classification References</div>
-                            {[
-                                "US Customs: 87 similar products classified under 6109.10.00",
-                                "EU Database: 156 matching classifications with 96% consistency",
-                                "WCO Guidelines: Direct alignment with Chapter 61 notes",
-                            ].map(ref => (
-                                <div key={ref} style={{ display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 6 }}>
-                                    <ExternalLink size={12} color="#2563eb" style={{ flexShrink: 0, marginTop: 2 }} />
-                                    <span style={{ fontSize: 12, color: "#2563eb", lineHeight: 1.5, fontWeight: 500 }}>{ref}</span>
+                                    <span style={{ fontFamily: "monospace", fontWeight: 900, color: "#7c3aed", fontSize: 15, marginRight: 14 }}>{c.hs_code}</span>
+                                    <ChevronRight size={15} color="var(--text-muted)" />
                                 </div>
                             ))}
                         </div>
                     </div>
-                </div>
+                )}
             </>)}
 
             {/* Recent Classifications */}
