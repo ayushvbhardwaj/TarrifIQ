@@ -85,7 +85,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
 /* ── page ── */
 export default function TradeInput() {
     const [f, setF] = useState({
-        name: "", category: CATEGORIES[0], description: "", material: "", intendedUse: "",
+        name: "", category: CATEGORIES[0], customCategory: "", description: "", material: "", intendedUse: "",
         value: "", currency: CURRENCIES[0], qty: "",
         weight: "", dimensions: "",
         origin: ORIGINS[0], dest: DESTS[0], transport: TRANSPORTS[0],
@@ -95,7 +95,7 @@ export default function TradeInput() {
     const [running, setRunning] = useState(false);
     const [result, setResult] = useState<null | "done">(null);
 
-    const canRun = !!(f.name && f.value && f.qty && f.origin !== ORIGINS[0] && f.dest !== DESTS[0] && f.transport !== TRANSPORTS[0]);
+    const canRun = !!(f.name && f.value && f.qty && f.origin !== ORIGINS[0] && f.dest !== DESTS[0] && f.transport !== TRANSPORTS[0] && (f.category !== "Other" || f.customCategory));
 
     function analyze() {
         if (!canRun || running) return;
@@ -130,6 +130,13 @@ export default function TradeInput() {
                             <Select options={CATEGORIES} value={f.category} onChange={set("category")} />
                         </Field>
                     </Row>
+                    {f.category === "Other" && (
+                        <div style={{ marginTop: -4 }}>
+                            <Field label="Specify Category" required>
+                                <Input placeholder="e.g., Specialized Equipment" value={f.customCategory} onChange={set("customCategory")} />
+                            </Field>
+                        </div>
+                    )}
                     <Field label="Product Description" required>
                         <textarea
                             value={f.description} onChange={e => set("description")(e.target.value)}
