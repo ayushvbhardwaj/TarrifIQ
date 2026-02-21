@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Globe, Sparkles, Package, DollarSign, MapPin, Weight, CheckCircle, Truck, ShieldCheck, AlertTriangle, RefreshCw, ChevronDown } from "lucide-react";
 
 /* ── helpers ── */
-const CATEGORIES = ["Select category", "Electronics & IT", "Apparel & Textiles", "Machinery", "Chemicals", "Food & Beverage", "Automotive Parts", "Medical Devices", "Furniture", "Toys & Games"];
+const CATEGORIES = ["Select category", "Electronics & IT", "Apparel & Textiles", "Machinery", "Chemicals", "Food & Beverage", "Automotive Parts", "Medical Devices", "Furniture", "Toys & Games", "Other"];
 const CURRENCIES = ["USD - US Dollar", "EUR - Euro", "GBP - Pound Sterling", "AED - UAE Dirham", "INR - Indian Rupee", "CNY - Chinese Yuan"];
 const ALL_COUNTRIES = [
     "Afghanistan", "Albania", "Algeria", "Angola", "Argentina", "Armenia", "Australia", "Austria",
