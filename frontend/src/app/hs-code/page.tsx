@@ -50,7 +50,7 @@ const riskStyle = {
 
 export default function HSCode() {
     const [loading, setLoading] = useState(false);
-    const [shown, setShown] = useState(false);
+    const [shown, setShown] = useState(true);
     const [selected, setSelected] = useState<string | null>(null);
     const [override, setOverride] = useState("");
 
@@ -73,26 +73,7 @@ export default function HSCode() {
                 </div>
             </div>
 
-            {/* Classify banner */}
-            <div className="animate-fade-in-up delay-100" style={{ padding: "18px 24px", borderRadius: 14, background: "#f5f3ff", border: "1px solid rgba(124,58,237,0.15)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <Sparkles size={18} color="#7c3aed" />
-                    <div>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>AI Product Understanding &amp; HS Classification</div>
-                        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>NLP-powered harmonized system code prediction with explainability</div>
-                    </div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    {shown && (
-                        <span style={{ fontSize: 13, fontWeight: 700, padding: "7px 16px", borderRadius: 99, background: "#ede9fe", color: "#7c3aed", border: "1px solid rgba(124,58,237,0.2)" }}>
-                            AI Confidence: 94%
-                        </span>
-                    )}
-                    <button onClick={classify} disabled={loading} style={{ padding: "10px 22px", borderRadius: 10, background: loading ? "rgba(124,58,237,0.5)" : "#7c3aed", border: "none", color: "#fff", fontWeight: 700, fontSize: 13, cursor: loading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 7 }}>
-                        {loading ? <><RefreshCw size={14} className="animate-spin-slow" /> Classifying…</> : <><Sparkles size={15} /> Classify with AI</>}
-                    </button>
-                </div>
-            </div>
+
 
             {/* Loading */}
             {loading && (
@@ -200,9 +181,7 @@ export default function HSCode() {
                                     <button style={{ padding: "9px 16px", borderRadius: 8, background: "#fff", border: "1.5px solid #cbd5e1", color: "var(--text-muted)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
                                         View Tariff Schedule
                                     </button>
-                                    <button style={{ padding: "9px 16px", borderRadius: 8, background: "#fff", border: "1.5px solid #cbd5e1", color: "var(--text-muted)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
-                                        Audit Defense Report
-                                    </button>
+
                                 </div>
                             </div>
                         </div>
