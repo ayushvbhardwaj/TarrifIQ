@@ -14,11 +14,8 @@ import re
 
 from dotenv import load_dotenv
 from openai import OpenAI
-from eventregistry import (
-    EventRegistry,
-    QueryArticlesIter,
-    QueryItems,
-)
+import urllib.parse
+import urllib.request
 
 from tarrif_lookup_engine import load_tariffs, get_tariff_rate
 from tarrif_lookup_engine import load_tariffs, get_tariff_rate
@@ -27,7 +24,7 @@ from shipping_landed_cost import calculate_landed_cost, calculate_landed_cost_li
 load_dotenv()
 
 MEGALLM_API_KEY = os.getenv("MEGALLM_API_KEY")
-EVENT_REGISTRY_API_KEY = os.getenv("EVENT_REGISTRY_API_KEY")
+THENEWSAPI_API_KEY = os.getenv("THENEWSAPI_API_KEY")
 megallm_client = OpenAI(
     base_url="https://ai.megallm.io/v1",
     api_key=MEGALLM_API_KEY,
@@ -92,7 +89,7 @@ Rules:
 
     try:
         response = megallm_client.chat.completions.create(
-            model="openai-gpt-oss-20b",
+            model="gpt-4.1",
             messages=[
                 {"role": "system", "content": "You are a senior international trade policy analyst. Respond with valid JSON only."},
                 {"role": "user", "content": prompt},
@@ -317,70 +314,59 @@ def run_policy_shock(
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  Live News Pipeline: Event Registry → Analysis
+#  Live News Pipeline: The News API → Analysis
 # ═══════════════════════════════════════════════════════════════════
 
 # Keywords tuned for tariff / trade-war / customs-duty news
-_TARIFF_KEYWORDS = QueryItems.OR([
-    "tariff",
-    "trade war",
-    "customs duty",
-    "import duty",
-    "trade policy",
-    "trade sanctions",
-    "anti-dumping duty",
-    "countervailing duty",
-    "retaliatory tariff",
-    "tariff hike",
-    "tariff exemption",
-])
-
-# Broad English-language source countries
-_SOURCE_LOCATIONS = QueryItems.OR([
-    "http://en.wikipedia.org/wiki/United_States",
-    "http://en.wikipedia.org/wiki/United_Kingdom",
-    "http://en.wikipedia.org/wiki/Canada",
-    "http://en.wikipedia.org/wiki/India",
-])
+_TARIFF_SEARCH_QUERY = 'tariff | "trade war" | "customs duty" | "import duty" | "trade policy" | "trade sanctions" | "anti-dumping" | "countervailing duty" | "retaliatory tariff" | "tariff hike" | "tariff exemption"'
 
 
-def fetch_tariff_news(max_items: int = 20) -> list[dict]:
+def fetch_tariff_news(max_items: int = 5) -> list[dict]:
     """
-    Query Event Registry for the most recent tariff-related news articles.
+    Query The News API for the most recent tariff-related news articles.
 
     Returns a list of article dicts, each containing:
         title, body, url, source, dateTime, image
     """
-    if not EVENT_REGISTRY_API_KEY:
+    if not THENEWSAPI_API_KEY:
         raise ValueError(
-            "EVENT_REGISTRY_API_KEY not found. "
+            "THENEWSAPI_API_KEY not found. "
             "Add it to your .env file."
         )
 
-    er = EventRegistry(
-        apiKey=EVENT_REGISTRY_API_KEY,
-        allowUseOfArchive=False,   # recent results only
-    )
+    params = urllib.parse.urlencode({
+        'api_token': THENEWSAPI_API_KEY,
+        'search': _TARIFF_SEARCH_QUERY,
+        'language': 'en',
+        'limit': str(min(max_items, 100)),
+    })
 
-    q = QueryArticlesIter(
-        keywords=_TARIFF_KEYWORDS,
-        sourceLocationUri=_SOURCE_LOCATIONS,
-        ignoreSourceGroupUri="paywall/paywalled_sources",
-        dataType=["news", "pr"],
-    )
+    url = f"https://api.thenewsapi.com/v1/news/all?{params}"
+    
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    try:
+        with urllib.request.urlopen(req) as response:
+            data = json.loads(response.read().decode('utf-8'))
+    except Exception as e:
+        print(f"Error fetching news from The News API: {e}")
+        return []
 
     articles: list[dict] = []
-    for raw in q.execQuery(er, sortBy="date", sortByAsc=False, maxItems=max_items):
+    
+    # Process results from The News API
+    for raw in data.get("data", []):
+        body_text = raw.get("description", "") + "\n" + raw.get("snippet", "")
         articles.append({
             "title":    raw.get("title", ""),
-            "body":     raw.get("body", ""),
+            "body":     body_text.strip(),
             "url":      raw.get("url", ""),
-            "source":   raw.get("source", {}).get("title", ""),
-            "dateTime": raw.get("dateTime", ""),
-            "image":    raw.get("image", ""),
+            "source":   raw.get("source", ""),
+            "dateTime": raw.get("published_at", ""),
+            "image":    raw.get("image_url", ""),
         })
 
-    return articles
+    # Limit to exactly max_items if we fetched more
+    return articles[:max_items]
 
 
 def run_policy_shock_from_live_news(max_articles: int = 5) -> list[dict]:
@@ -418,7 +404,7 @@ def run_policy_shock_from_live_news(max_articles: int = 5) -> list[dict]:
 
 if __name__ == "__main__":
     # ── Fetch Live News ─────────────────────────
-    print("Fetching latest tariff news from Event Registry...")
+    print("Fetching latest tariff news from The News API...")
     articles = fetch_tariff_news(max_items=1)
     if not articles:
         print("No recent tariff news found.")

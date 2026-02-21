@@ -113,7 +113,7 @@ Rules:
 
     try:
         response = megallm_client.chat.completions.create(
-            model="openai-gpt-oss-20b",
+            model="gpt-4.1",
             messages=[
                 {"role": "system", "content": "You are a senior global trade compliance officer. Respond with valid JSON only."},
                 {"role": "user", "content": prompt},
@@ -162,8 +162,8 @@ def run_compliance_check(country: str, product_desc: str) -> dict | None:
 # ═══════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    COUNTRY = "Germany"
-    PRODUCT = "Lithium-ion batteries (HS 8507.60)"
+    COUNTRY = "India"
+    PRODUCT = "Semiconductor manufacturing equipment (HS 8486.20)"
     
     print("=" * 60)
     print("  TariffIQ — AI Compliance Agent")

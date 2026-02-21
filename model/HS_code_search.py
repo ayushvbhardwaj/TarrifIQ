@@ -129,7 +129,7 @@ Return JSON in exactly this format:
 
     try:
         response = megallm_client.chat.completions.create(
-            model="openai-gpt-oss-20b",
+            model="gpt-4.1",
             messages=[
                 {"role": "system", "content": "You are a customs classification expert. Respond with valid JSON only."},
                 {"role": "user", "content": prompt},
