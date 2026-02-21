@@ -14,8 +14,10 @@ export default function PageShell({
             <Sidebar />
             <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
                 <TopBar title={title} />
-                <main style={{ flex: 1, overflowY: "auto", padding: "32px", display: "flex", flexDirection: "column", gap: 28, zoom: 1.25 }}>
-                    {children}
+                <main style={{ flex: 1, overflowY: "auto", padding: "32px", zoom: 1.25 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 28, minHeight: "min-content" }}>
+                        {children}
+                    </div>
                 </main>
             </div>
         </div>

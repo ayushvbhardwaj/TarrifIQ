@@ -83,7 +83,7 @@ export default function LandedCost() {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {COST_ITEMS.map(item => {
-                        const hs = item.highlight ? highlightStyle[item.highlight] : null;
+                        const hs = item.highlight ? highlightStyle[item.highlight as keyof typeof highlightStyle] : null;
                         return (
                             <div key={item.label} style={{
                                 display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -128,7 +128,7 @@ export default function LandedCost() {
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" vertical={false} />
                         <XAxis dataKey="name" tick={{ fontSize: 13, fontWeight: 600, fill: "#334155" }} axisLine={false} tickLine={false} />
                         <YAxis tickFormatter={v => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                        <Tooltip formatter={(v: number) => [`$${v.toLocaleString()}`, "Total Cost"]} contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 13 }} />
+                        <Tooltip formatter={(v: any) => [`$${Number(v).toLocaleString()}`, "Total Cost"]} contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 13 }} />
                         <Legend wrapperStyle={{ fontSize: 13, fontWeight: 600 }} />
                         <Bar dataKey="Total Cost ($)" fill="#7c3aed" radius={[6, 6, 0, 0]} />
                     </BarChart>
