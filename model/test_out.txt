@@ -1,0 +1,79 @@
+============================================================
+  TariffAI — Policy Shock Simulator
+============================================================
+
+📰 News:
+India’s Ministry of Finance announced a reduction in customs duty on semiconductor manufacturing equipment from 7.5% to 2.5%, effective immediately. The policy aims to support domestic chip fabrication projects under the country’s electronics manufacturing initiative. Officials said the lower tariff would reduce capital costs for new fabrication plants. Industry groups welcomed the decision, stating it improves India’s competitiveness in advanced manufacturing. No changes were announced for finished semiconductor imports.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  � EXTRACTED POLICY DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Headline      : India reduces customs duty on semiconductor manufacturing equipment from 7.5% to 2.5%
+  Countries     : India
+  Direction     : decrease
+  Δ Tariff      : -5.0%
+  Sectors       : Semiconductor manufacturing equipment, Electronics manufacturing
+  Policy type   : other
+  Effective     : 2026-02-21
+  HS chapters   :
+    • 8473 - Electronic integrated circuits and microassemblies
+    • 8474 - Electronic integrated circuits and microassemblies, other than those of heading 8473
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  🤖 STRATEGIC ANALYSIS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Risk level    : LOW
+  Risk score    : 1.0 / 10
+  Confidence    : 0.9
+
+  Impact: The tariff cut reduces capital costs for semiconductor manufacturing equipment, encouraging domestic fab investment and enhancing India’s competitiveness in advanced electronics manufacturing. Finished semiconductor imports remain unaffected, so importers of finished chips face no immediate change.
+  Winners: Indian semiconductor equipment suppliers, domestic chip fab developers, electronics manufacturers
+  Losers:  None identified; finished semiconductor importers are unaffected
+
+  Actions:
+    1. Accelerate procurement of semiconductor manufacturing equipment to benefit from the lower tariff
+    2. Leverage the reduced cost to expand domestic fab capacity and attract foreign investment
+  Alt sources   : China, Taiwan, South Korea
+  Timing        : Act promptly to secure equipment before potential price adjustments or supply constraints arise; monitor global supply chain dynamics closely.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  📦 YOUR PORTFOLIO IMPACT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  HS 848610:
+  ❌ No FTA Preference
+    Tariff: 0.6208% → 0%
+    Landed: $5,631.04 → $5,600.00
+    Impact: 🟢 $-31.04 (-0.55%)
+
+  HS 848620:
+  ❌ No FTA Preference
+    Tariff: 0.6208% → 0%
+    Landed: $5,631.04 → $5,600.00
+    Impact: 🟢 $-31.04 (-0.55%)
+
+  HS 848630:
+  ❌ No FTA Preference
+    Tariff: 0.6208% → 0%
+    Landed: $5,631.04 → $5,600.00
+    Impact: 🟢 $-31.04 (-0.55%)
+
+  HS 848640:
+  ❌ No FTA Preference
+    Tariff: 0.6208% → 0%
+    Landed: $5,631.04 → $5,600.00
+    Impact: 🟢 $-31.04 (-0.55%)
+
+  HS 848690:
+  ❌ No FTA Preference
+    Tariff: 0.6208% → 0%
+    Landed: $5,631.04 → $5,600.00
+    Impact: 🟢 $-31.04 (-0.55%)
+
+  ── Portfolio ──
+    Baseline : $28,155.20
+    New      : $28,000.00
+    Impact   : $-155.20 (-0.55%)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

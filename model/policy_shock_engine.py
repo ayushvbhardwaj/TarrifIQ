@@ -1,7 +1,7 @@
 """
 TariffAI — Policy Shock Simulator
 ===================================
-Feed it a news article or headline → Gemini 2.5 Flash extracts
+Feed it a news article or headline → MegaLLM (GPT-4) extracts
 tariff policy details and provides strategic trade analysis.
 
 Optionally provide your own HS codes to get a personalized
@@ -13,29 +13,39 @@ import json
 import re
 
 from dotenv import load_dotenv
-from google import genai
+from openai import OpenAI
+from eventregistry import (
+    EventRegistry,
+    QueryArticlesIter,
+    QueryItems,
+)
 
 from tarrif_lookup_engine import load_tariffs, get_tariff_rate
-from shipping_landed_cost import calculate_landed_cost
+from tarrif_lookup_engine import load_tariffs, get_tariff_rate
+from shipping_landed_cost import calculate_landed_cost, calculate_landed_cost_live
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+MEGALLM_API_KEY = os.getenv("MEGALLM_API_KEY")
+EVENT_REGISTRY_API_KEY = os.getenv("EVENT_REGISTRY_API_KEY")
+megallm_client = OpenAI(
+    base_url="https://ai.megallm.io/v1",
+    api_key=MEGALLM_API_KEY,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  Step 1: Parse News → Extract Tariff Details via Gemini
+#  Step 1: Parse News → Extract Tariff Details via MegaLLM
 # ═══════════════════════════════════════════════════════════════════
 
 def analyze_news(news_text: str) -> dict | None:
     """
-    Send raw news text to Gemini 2.5 Flash.
+    Send raw news text to MegaLLM (GPT-4).
     Returns structured extraction of tariff policy changes
     plus a strategic trade analysis.
     """
-    if not GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY not found. Check your .env file.")
+    if not MEGALLM_API_KEY:
+        raise ValueError("MEGALLM_API_KEY not found. Check your .env file.")
 
     prompt = f"""
 You are a senior international trade policy analyst.
@@ -81,22 +91,25 @@ Rules:
 """
 
     try:
-        response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config={"temperature": 0},
+        response = megallm_client.chat.completions.create(
+            model="openai-gpt-oss-20b",
+            messages=[
+                {"role": "system", "content": "You are a senior international trade policy analyst. Respond with valid JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0,
         )
-        content = response.text.strip()
+        content = response.choices[0].message.content.strip()
         content = re.sub(r"^```(?:json)?\s*", "", content)
         content = re.sub(r"\s*```$", "", content)
     except Exception as e:
-        print(f"Gemini request failed: {e}")
+        print(f"MegaLLM request failed: {e}")
         return None
 
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError:
-        print("Invalid JSON from Gemini:")
+        print("Invalid JSON from MegaLLM:")
         print(content)
         return None
 
@@ -179,6 +192,77 @@ def run_personal_impact(
     }
 
 
+def run_personal_impact_live(
+    hs_codes: list[str],
+    tariff_delta_percent: float,
+    origin: str,
+    destination: str,
+    mode: str,
+    weight_kg: float,
+    product_value: float,
+    year: int = 2021,
+) -> dict:
+    """
+    LIVE WITS API version of run_personal_impact.
+    Uses actual Effectively Applied (AHS) rates from WITS as the baseline,
+    showing if an FTA already applies before adding the shock delta.
+    """
+    results = []
+    skipped = []
+
+    for hs in hs_codes:
+        # Get live baseline (AHS rate)
+        baseline = calculate_landed_cost_live(
+            origin, destination, mode, weight_kg, product_value, hs, year
+        )
+        
+        if baseline is None:
+            skipped.append(hs)
+            continue
+
+        baseline_tariff = baseline["applied_tariff"]
+        
+        # Post-shock (clamp to 0) - assumes policy delta is applied on top of AHS
+        new_tariff = round(max(0, baseline_tariff + tariff_delta_percent), 2)
+        post = calculate_landed_cost(
+            origin, destination, mode, weight_kg, product_value, new_tariff
+        )
+
+        impact = round(post["total_landed_cost"] - baseline["total_landed_cost"], 2)
+        pct = round((impact / baseline["total_landed_cost"]) * 100, 2) if baseline["total_landed_cost"] else 0.0
+
+        results.append({
+            "hs_code": hs,
+            "product_label": baseline.get("product_description"),
+            "mfn_rate": baseline.get("mfn_rate"),
+            "baseline_tariff": baseline_tariff,
+            "preference_margin": baseline.get("preference_margin", 0.0),
+            "has_preference": baseline.get("has_preference", False),
+            "new_tariff": new_tariff,
+            "baseline_total": baseline["total_landed_cost"],
+            "new_total": post["total_landed_cost"],
+            "absolute_impact": impact,
+            "percent_impact": pct,
+        })
+
+    # Portfolio aggregation
+    total_base = sum(r["baseline_total"] for r in results)
+    total_new = sum(r["new_total"] for r in results)
+    total_impact = round(total_new - total_base, 2)
+    pct_change = round((total_impact / total_base) * 100, 2) if total_base else 0.0
+
+    return {
+        "per_hs": results,
+        "portfolio": {
+            "total_baseline_cost": total_base,
+            "total_new_cost": total_new,
+            "total_impact": total_impact,
+            "portfolio_percent_change": pct_change,
+        },
+        "skipped": skipped,
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Full Pipeline: News → Analysis → Optional Personal Impact
 # ═══════════════════════════════════════════════════════════════════
@@ -193,16 +277,17 @@ def run_policy_shock(
     product_value: float = 10000,
     importing_country: str | None = None,
     year: int = 2025,
+    use_live_wits: bool = False,
 ) -> dict:
     """
     Main entry point.
 
-    1. Analyze news with Gemini → extract tariff details + strategic analysis
+    1. Analyze news with MegaLLM → extract tariff details + strategic analysis
     2. If HS codes provided → run before/after simulation
 
     Returns combined result dict.
     """
-    # Step 1: Gemini analysis
+    # Step 1: MegaLLM analysis
     analysis = analyze_news(news_text)
 
     output = {
@@ -216,13 +301,115 @@ def run_policy_shock(
         delta = analysis.get("extracted_policy", {}).get("estimated_tariff_delta_percent", 0)
 
         if origin and destination and importing_country:
-            impact = run_personal_impact(
-                hs_codes, delta, origin, destination, mode,
-                weight_kg, product_value, importing_country, year,
-            )
+            if use_live_wits:
+                 impact = run_personal_impact_live(
+                     hs_codes, delta, origin, destination, mode,
+                     weight_kg, product_value, year,
+                 )
+            else:
+                 impact = run_personal_impact(
+                     hs_codes, delta, origin, destination, mode,
+                     weight_kg, product_value, importing_country, year,
+                 )
             output["personal_impact"] = impact
 
     return output
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  Live News Pipeline: Event Registry → Analysis
+# ═══════════════════════════════════════════════════════════════════
+
+# Keywords tuned for tariff / trade-war / customs-duty news
+_TARIFF_KEYWORDS = QueryItems.OR([
+    "tariff",
+    "trade war",
+    "customs duty",
+    "import duty",
+    "trade policy",
+    "trade sanctions",
+    "anti-dumping duty",
+    "countervailing duty",
+    "retaliatory tariff",
+    "tariff hike",
+    "tariff exemption",
+])
+
+# Broad English-language source countries
+_SOURCE_LOCATIONS = QueryItems.OR([
+    "http://en.wikipedia.org/wiki/United_States",
+    "http://en.wikipedia.org/wiki/United_Kingdom",
+    "http://en.wikipedia.org/wiki/Canada",
+    "http://en.wikipedia.org/wiki/India",
+])
+
+
+def fetch_tariff_news(max_items: int = 20) -> list[dict]:
+    """
+    Query Event Registry for the most recent tariff-related news articles.
+
+    Returns a list of article dicts, each containing:
+        title, body, url, source, dateTime, image
+    """
+    if not EVENT_REGISTRY_API_KEY:
+        raise ValueError(
+            "EVENT_REGISTRY_API_KEY not found. "
+            "Add it to your .env file."
+        )
+
+    er = EventRegistry(
+        apiKey=EVENT_REGISTRY_API_KEY,
+        allowUseOfArchive=False,   # recent results only
+    )
+
+    q = QueryArticlesIter(
+        keywords=_TARIFF_KEYWORDS,
+        sourceLocationUri=_SOURCE_LOCATIONS,
+        ignoreSourceGroupUri="paywall/paywalled_sources",
+        dataType=["news", "pr"],
+    )
+
+    articles: list[dict] = []
+    for raw in q.execQuery(er, sortBy="date", sortByAsc=False, maxItems=max_items):
+        articles.append({
+            "title":    raw.get("title", ""),
+            "body":     raw.get("body", ""),
+            "url":      raw.get("url", ""),
+            "source":   raw.get("source", {}).get("title", ""),
+            "dateTime": raw.get("dateTime", ""),
+            "image":    raw.get("image", ""),
+        })
+
+    return articles
+
+
+def run_policy_shock_from_live_news(max_articles: int = 5) -> list[dict]:
+    """
+    Auto-fetch the latest tariff-related news via Event Registry,
+    then analyse each article with MegaLLM.
+
+    Returns a list of dicts, one per article:
+        { article: { title, url, source, dateTime, image },
+          analysis: { extracted_policy, strategic_analysis } }
+    """
+    articles = fetch_tariff_news(max_items=max_articles)
+
+    results: list[dict] = []
+    for art in articles:
+        news_text = f"{art['title']}\n\n{art['body']}"
+        analysis = analyze_news(news_text)
+        results.append({
+            "article": {
+                "title":    art["title"],
+                "url":      art["url"],
+                "source":   art["source"],
+                "dateTime": art["dateTime"],
+                "image":    art["image"],
+            },
+            "analysis": analysis,
+        })
+
+    return results
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -230,32 +417,35 @@ def run_policy_shock(
 # ═══════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    # ── Just the news — change this to test ─────────────────────────
-    NEWS = """
-    The United States has announced a 25% tariff on all steel and aluminum 
-    imports effective March 12, 2025. The tariffs apply globally with no 
-    country exemptions, reversing previous exclusions for allies including 
-    the EU, UK, and Canada. Industry analysts expect retaliatory measures 
-    from the European Union and China within weeks.
-    """
+    # ── Fetch Live News ─────────────────────────
+    print("Fetching latest tariff news from Event Registry...")
+    articles = fetch_tariff_news(max_items=1)
+    if not articles:
+        print("No recent tariff news found.")
+        exit(0)
+        
+    latest_article = articles[0]
+    NEWS = f"{latest_article['title']}\n\n{latest_article['body']}"
 
     # Optional: your HS codes for personalized impact
-    MY_HS_CODES      = ["720890", "760120"]   # steel + aluminum, set to [] to skip
+    MY_HS_CODES      = ["848610", "848620", "848630", "848640", "848690"]   # steel + aluminum, set to [] to skip
     ORIGIN           = "china"
     DESTINATION      = "usa"
     MODE             = "sea"
-    WEIGHT_KG        = 1000
-    PRODUCT_VALUE    = 50000
+    WEIGHT_KG        = 100
+    PRODUCT_VALUE    = 5000
     IMPORTING_COUNTRY = "United States of America"
-    YEAR             = 2025
+    YEAR             = 2021
     # ────────────────────────────────────────────────────────────────
 
     print("=" * 60)
     print("  TariffAI — Policy Shock Simulator")
     print("=" * 60)
-    print(f"\n📰 News:\n{NEWS.strip()}")
+    print(f"\n📰 Source: {latest_article['source']} | {latest_article['dateTime']}")
+    print(f"📰 News:\n{NEWS.strip()}")
 
     # Run
+    # Note: Using LIVE WITS
     result = run_policy_shock(
         news_text=NEWS,
         hs_codes=MY_HS_CODES if MY_HS_CODES else None,
@@ -266,6 +456,7 @@ if __name__ == "__main__":
         product_value=PRODUCT_VALUE,
         importing_country=IMPORTING_COUNTRY,
         year=YEAR,
+        use_live_wits=True,
     )
 
     # ── Print Analysis ──────────────────────────────────────────────
@@ -312,7 +503,7 @@ if __name__ == "__main__":
             print(f"  Alt sources   : {', '.join(alts)}")
         print(f"  Timing        : {strat.get('timing_advice', 'N/A')}")
     else:
-        print("\n  ❌ Gemini analysis unavailable.")
+        print("\n  ❌ MegaLLM analysis unavailable.")
 
     # ── Print Personal Impact (if HS codes were provided) ──────────
     impact = result.get("personal_impact")
@@ -324,6 +515,9 @@ if __name__ == "__main__":
         for r in impact["per_hs"]:
             icon = "🟢" if r["absolute_impact"] < 0 else "🔴"
             print(f"\n  HS {r['hs_code']}:")
+            if "has_preference" in r:
+                pref = f"  ✅ FTA Discount: -{r['preference_margin']}% (MFN: {r['mfn_rate']}%)" if r["has_preference"] else "  ❌ No FTA Preference"
+                print(pref)
             print(f"    Tariff: {r['baseline_tariff']}% → {r['new_tariff']}%")
             print(f"    Landed: ${r['baseline_total']:,.2f} → ${r['new_total']:,.2f}")
             print(f"    Impact: {icon} ${r['absolute_impact']:,.2f} ({r['percent_impact']}%)")

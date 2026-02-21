@@ -11,7 +11,7 @@ cross-border trade cost sensitivity.
 
 import os
 import pandas as pd
-from tarrif_lookup_engine import load_tariffs, get_tariff_rate
+from tarrif_lookup_engine import load_tariffs, get_tariff_rate, get_tariff_rate_live
 
 # ── Route Distances ─────────────────────────────────────────────────
 # Approximate trade-lane estimates (km). All routes are symmetric.
@@ -230,6 +230,63 @@ def calculate_landed_cost_with_lookup(
     )
 
 
+def calculate_landed_cost_live(
+    origin: str,
+    destination: str,
+    mode: str,
+    weight_kg: float,
+    product_value: float,
+    hs_code: str,
+    year: int = 2021, # WITS usually has latest full data for 2021/2022
+) -> dict | None:
+    """
+    Full landed cost calculation using LIVE preferentially-adjusted 
+    WITS tariffs (AHS). Falls back to csv rate if live fails.
+    """
+    # 1) Try to get fallback rate from CSV
+    df = load_cross_country_data(reporter=destination, partner=origin)
+    fallback_rate = None
+    csv_product_desc = "Unknown"
+    is_traded = "No"
+    
+    if df is not None:
+        hs_str = str(hs_code).strip()
+        match = df[df["hs_code"] == hs_str]
+        if not match.empty:
+            fallback_rate = float(match.iloc[0]["AppliedTariff"])
+            csv_product_desc = match.iloc[0]["Product"]
+            is_traded = match.iloc[0]["IsTraded"]
+
+    # 2) Live lookup
+    tariff_data = get_tariff_rate_live(
+        hs_code=hs_code, 
+        origin=origin, 
+        destination=destination, 
+        year=year,
+        fallback_rate=fallback_rate
+    )
+    
+    rate_to_use = tariff_data["ahs_rate"]
+    if rate_to_use is None:
+         return None
+         
+    # 3) Calculate landed cost
+    result = calculate_landed_cost(
+        origin, destination, mode, weight_kg, product_value, rate_to_use
+    )
+    
+    # 4) Enrich with preference data
+    result["product_description"] = tariff_data.get("product_label", csv_product_desc)
+    result["mfn_rate"] = tariff_data["mfn_rate"]
+    result["applied_tariff"] = tariff_data["ahs_rate"]
+    result["preference_margin"] = tariff_data["preference_margin"]
+    result["has_preference"] = tariff_data["has_preference"]
+    result["is_live"] = tariff_data["is_live"]
+    result["is_traded"] = is_traded
+    
+    return result
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  Cross-Country Data Functions
 # ═══════════════════════════════════════════════════════════════════
@@ -339,6 +396,43 @@ def compare_origins(
 
     return results
 
+def compare_origins_live(
+    hs_code: str,
+    my_country: str,
+    mode: str,
+    weight_kg: float,
+    product_value: float,
+    origins: list[str] | None = None,
+    year: int = 2021,
+) -> list[dict]:
+    """
+    LIVE WITS API version of compare_origins. 
+    Queries actual preferential tariffs to find the cheapest FTA route.
+    """
+    if origins is None:
+        origins = [c for c in SUPPORTED_COUNTRIES if c != _normalize(my_country)]
+
+    results = []
+
+    for src in origins:
+        src = _normalize(src)
+        if src == _normalize(my_country):
+            continue
+
+        result = calculate_landed_cost_live(
+            origin=src, destination=my_country, hs_code=hs_code,
+            mode=mode, weight_kg=weight_kg, product_value=product_value,
+            year=year
+        )
+
+        if result is not None:
+            results.append(result)
+
+    # Sort by cheapest landed cost
+    results.sort(key=lambda r: r["total_landed_cost"])
+
+    return results
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  Demo Run
@@ -383,34 +477,41 @@ if __name__ == "__main__":
     else:
         print("  No data found.")
 
-    # ── Comparison mode ────────────────────────────────────────────
+    # ── Live Comparison mode ───────────────────────────────────────
     print(f"\n{'━' * 70}")
-    print(f"  COMPARISON: Best country to buy from → {MY_COUNTRY.upper()}")
+    print(f"  LIVE WITS COMPARISON: Best country to buy from → {MY_COUNTRY.upper()}")
+    print(f"  (Queries live preferential/FTA tariff rates from World Bank)")
     print(f"{'━' * 70}")
 
-    results = compare_origins(
+    live_results = compare_origins_live(
         HS_CODE, MY_COUNTRY, MODE, WEIGHT_KG, PRODUCT_VALUE
     )
 
-    if results:
-        print(f"\n  {'Rank':<5} {'Buy From':<12} {'Dist (km)':<12} {'Shipping':<12} "
-              f"{'Tariff %':<10} {'Duty':<14} {'TOTAL':<12}")
-        print(f"  {'─' * 75}")
+    if live_results:
+        print(f"\n  {'Rank':<5} {'Buy From':<12} {'Dist (km)':<12} {'Shipping':<10} "
+              f"{'Pref Margin':<12} {'AHS %':<8} {'Duty':<12} {'TOTAL':<12}")
+        print(f"  {'─' * 85}")
 
-        for i, r in enumerate(results, 1):
+        for i, r in enumerate(live_results, 1):
             src = r["route"].split(" → ")[0].upper()
             best = " ← CHEAPEST" if i == 1 else ""
+            pref = f"(-{r['preference_margin']}%)" if r.get('has_preference') else "None"
+            
             print(f"  {i:<5} {src:<12} {r['distance_km']:<12,} "
-                  f"${r['shipping_cost']:<11,.2f} {r['applied_tariff']:<10.2f} "
-                  f"${r['import_duty']:<13,.2f} ${r['total_landed_cost']:,.2f}{best}")
+                  f"${r['shipping_cost']:<9,.2f} {pref:<12} {r['applied_tariff']:<8.2f} "
+                  f"${r['import_duty']:<11,.2f} ${r['total_landed_cost']:,.2f}{best}")
 
-        cheapest = results[0]
-        costliest = results[-1]
+        cheapest = live_results[0]
+        costliest = live_results[-1]
         savings = round(costliest["total_landed_cost"] - cheapest["total_landed_cost"], 2)
         best_src = cheapest["route"].split(" → ")[0].upper()
-        print(f"\n  💡 Best to buy from: {best_src} — saves ${savings:,.2f} vs costliest option")
+        if cheapest.get('has_preference'):
+            fta_note = f" (Includes {cheapest['preference_margin']}% FTA Discount!)"
+        else:
+            fta_note = ""
+        print(f"\n  💡 Best to buy from: {best_src} — saves ${savings:,.2f} vs costliest option{fta_note}")
     else:
-        print("  No comparison data found for this HS code.")
+        print("  No live comparison data found for this HS code.")
 
     print(f"\n{'━' * 70}")
 

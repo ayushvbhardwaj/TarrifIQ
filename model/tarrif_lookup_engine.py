@@ -1,4 +1,5 @@
 import pandas as pd
+from wits_api import get_preferential_tariff
 
 TARIFF_CSV = "/Users/ayushbhardwaj/Documents/TarrifIQ/data/tariffs_2025_clean.csv"
 
@@ -26,7 +27,7 @@ def get_available_years(hs_code: str, country: str, tariffs_df: pd.DataFrame) ->
 
 
 def get_tariff_rate(hs_code: str, country: str, year: int, tariffs_df: pd.DataFrame) -> float | None:
-    """Look up the tariff rate (%) for a specific HS code + country + year."""
+    """Look up the tariff rate (%) for a specific HS code + country + year from local CSV."""
     hs_code = str(hs_code).zfill(6)
     row = tariffs_df[
         (tariffs_df["hs_code"] == hs_code) &
@@ -36,6 +37,39 @@ def get_tariff_rate(hs_code: str, country: str, year: int, tariffs_df: pd.DataFr
     if row.empty:
         return None
     return float(row.iloc[0]["tariff_rate"])
+
+
+def get_tariff_rate_live(hs_code: str, origin: str, destination: str, year: int = 2021, fallback_rate: float | None = None) -> dict:
+    """
+    Look up the live effectively applied (preferential) tariff rate via WITS API.
+    If WITS fails or returns no data, uses the fallback_rate.
+
+    Returns dict with:
+        ahs_rate, mfn_rate, preference_margin, has_preference, source, is_live
+    """
+    wits_data = get_preferential_tariff(
+        reporter=destination,
+        partner=origin,
+        hs6=hs_code,
+        year=year,
+        timeout=15
+    )
+    
+    if wits_data:
+        wits_data["is_live"] = True
+        return wits_data
+        
+    # Fallback to local
+    return {
+        "ahs_rate": fallback_rate,
+        "mfn_rate": fallback_rate,
+        "preference_margin": 0.0,
+        "has_preference": False,
+        "product_group": None,
+        "product_label": "Local Data",
+        "source": "local-csv",
+        "is_live": False
+    }
 
 
 def calculate_total_cost(hs_code: str, country: str, year: int,

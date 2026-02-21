@@ -7,14 +7,17 @@ import json
 import re
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
-from google import genai
+from openai import OpenAI
 
 load_dotenv()  # This loads .env file
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+MEGALLM_API_KEY = os.getenv("MEGALLM_API_KEY")
 
-# Initialize Gemini client
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+# Initialize MegaLLM client (OpenAI-compatible API)
+megallm_client = OpenAI(
+    base_url="https://ai.megallm.io/v1",
+    api_key=MEGALLM_API_KEY,
+)
 
 # === CONFIG ===
 MODEL_DIR = '/Users/ayushbhardwaj/Documents/TarrifIQ/data'
@@ -56,7 +59,7 @@ def search(query: str, index, codes_df, model, top_k=TOP_K):
 
 def rerank_with_llm(product_description, candidates):
     """
-    Rerank HS candidates using Gemini 2.5 Flash.
+    Rerank HS candidates using MegaLLM (OpenAI-compatible API).
 
     candidates: list of dicts with keys:
         - hs_code
@@ -64,8 +67,8 @@ def rerank_with_llm(product_description, candidates):
         - score (optional)
     """
 
-    if not GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY not found. Check your .env file.")
+    if not MEGALLM_API_KEY:
+        raise ValueError("MEGALLM_API_KEY not found. Check your .env file.")
 
     if not candidates:
         return None
@@ -125,15 +128,16 @@ Return JSON in exactly this format:
 """
 
     try:
-        response = gemini_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config={
-                "temperature": 0,
-            },
+        response = megallm_client.chat.completions.create(
+            model="openai-gpt-oss-20b",
+            messages=[
+                {"role": "system", "content": "You are a customs classification expert. Respond with valid JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0,
         )
 
-        content = response.text.strip()
+        content = response.choices[0].message.content.strip()
         # Remove markdown code fences if present
         content = re.sub(r"^```(?:json)?\s*", "", content)
         content = re.sub(r"\s*```$", "", content)
