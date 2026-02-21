@@ -79,7 +79,9 @@ def rerank_with_llm(product_description, candidates):
         )
 
     prompt = f"""
-You are an expert in Harmonized System (HS) classification.
+You are a professional customs classification expert specializing in the Harmonized System (HS).
+
+Your task is to determine the most appropriate HS code from a strictly limited candidate list.
 
 Product description:
 "{product_description}"
@@ -88,20 +90,37 @@ Candidate HS codes:
 
 {candidate_text}
 
-Instructions:
-- You must choose ONLY from the provided HS codes.
-- Do NOT invent new codes.
-- If two codes are close, choose the most specific one.
-- Return valid JSON only.
-- Confidence must be between 0 and 1.
+Classification Rules:
 
-Return JSON in this format:
+1. Apply General Rules of Interpretation (GRI) where relevant.
+2. Consider material composition, processing stage, function, and specificity.
+3. Prefer the most specific heading that accurately matches the product.
+4. If critical information is missing (e.g., weight, percentage composition, processing level),
+   explicitly state this and reduce confidence accordingly.
+5. You MUST choose ONLY from the provided HS codes.
+6. You MUST NOT invent, modify, or suggest codes outside the list.
+7. If none perfectly match, select the closest legally defensible option from the list.
+
+Output Requirements:
+
+- Return VALID JSON only.
+- Do not include explanations outside JSON.
+- Confidence must be a decimal between 0 and 1.
+- If uncertainty exists, confidence must be below 0.8.
+
+Return JSON in exactly this format:
 
 {{
   "primary_hs": "",
   "secondary_hs": "",
   "confidence": 0.0,
-  "reasoning": ""
+  "analysis": {{
+    "composition_or_material_analysis": "",
+    "functional_or_processing_analysis": "",
+    "exclusion_of_alternatives": "",
+    "information_gaps": "",
+    "final_justification": ""
+  }}
 }}
 """
 
@@ -149,7 +168,7 @@ Return JSON in this format:
 
 
 def main():
-    query = "Stainless steel kitchen knife with 20 cm blade."
+    query = "Cotton fabric blended with 20 percent polyester."
     top_k = 6
 
     print("Loading model and index...")
@@ -182,7 +201,15 @@ def main():
         print(f"  Secondary HS:          {reranked.get('secondary_hs', 'N/A')}")
         print(f"  Embedding Similarity:  {embedding_score}")
         print(f"  LLM Confidence:        {reranked['confidence']}")
-        print(f"  Reasoning:             {reranked['reasoning']}")
+
+        analysis = reranked.get("analysis", {})
+        if analysis:
+            print(f"\n  --- Analysis ---")
+            print(f"  Material/Composition:  {analysis.get('composition_or_material_analysis', 'N/A')}")
+            print(f"  Function/Processing:   {analysis.get('functional_or_processing_analysis', 'N/A')}")
+            print(f"  Exclusions:            {analysis.get('exclusion_of_alternatives', 'N/A')}")
+            print(f"  Info Gaps:             {analysis.get('information_gaps', 'N/A')}")
+            print(f"  Justification:         {analysis.get('final_justification', 'N/A')}")
     else:
         print("  LLM reranking failed. Using FAISS top result as fallback.")
         print(f"  Best match: {results[0]['hs_code']} (similarity: {results[0]['score']}) — {results[0]['description']}")
