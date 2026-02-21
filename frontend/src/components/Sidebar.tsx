@@ -3,8 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
     LayoutGrid, Globe, Sparkles, ShieldCheck,
-    Calculator, TrendingUp, Newspaper, AlertCircle,
-    Zap, ChevronRight, Activity
+    Calculator, TrendingUp, Newspaper, ChevronRight, Activity
 } from "lucide-react";
 
 const navItems = [
@@ -15,8 +14,6 @@ const navItems = [
     { label: "Landed Cost", icon: Calculator, href: "/landed-cost" },
     { label: "Optimize", icon: TrendingUp, href: "/optimize" },
     { label: "Tariff News", icon: Newspaper, href: "/tariff-news" },
-    { label: "Impact", icon: AlertCircle, href: "/impact" },
-    { label: "Alerts", icon: Zap, href: "/alerts" },
 ];
 
 export default function Sidebar() {

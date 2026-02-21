@@ -334,48 +334,6 @@ export default function Optimize() {
                 </div>
             </div>
 
-            {/* ── AI Trade Strategy Advisor ───────────────────────── */}
-            <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: 24, borderRadius: 12, background: "#f8faff", border: "1px solid #e0e7ff", marginTop: 24 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
-                    <Sparkles size={18} color="#6366f1" />
-                    <div>
-                        <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text-primary)" }}>AI Trade Strategy Advisor</div>
-                        <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>Opinionated intelligence with forward-looking insights</div>
-                    </div>
-                </div>
-
-                <div style={{ padding: "20px 24px", borderRadius: 12, background: "#fff", border: "1px solid #e2e8f0", boxShadow: "0 2px 10px rgba(79,70,229,0.03)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                        <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#4f46e5", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                            <Sparkles size={20} color="#fff" />
-                        </div>
-                        <div>
-                            <div style={{ fontSize: 18, fontWeight: 800, color: "#312e81", marginBottom: 4 }}>Import now with partial stockpiling</div>
-                            <div style={{ fontSize: 14, color: "#4338ca", fontWeight: 500 }}>Tariff increase expected in Q2 2026. Current rates favorable.</div>
-                        </div>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginTop: 20 }}>
-                        <div style={{ padding: "16px", borderRadius: 10, background: "#fff", border: "1px solid #f1f5f9", boxShadow: "0 1px 3px rgba(0,0,0,0.02)" }}>
-                            <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, marginBottom: 8 }}>Confidence Score</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                <div style={{ flex: 1, height: 6, background: "#e2e8f0", borderRadius: 99 }}>
-                                    <div style={{ height: "100%", width: "87%", background: "#1e293b", borderRadius: 99 }} />
-                                </div>
-                                <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text-primary)" }}>87%</div>
-                            </div>
-                        </div>
-                        <div style={{ padding: "16px", borderRadius: 10, background: "#fff", border: "1px solid #f1f5f9", boxShadow: "0 1px 3px rgba(0,0,0,0.02)" }}>
-                            <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, marginBottom: 4 }}>Action Window</div>
-                            <div style={{ fontSize: 16, fontWeight: 800, color: "#4338ca" }}>Next 60 days</div>
-                        </div>
-                        <div style={{ padding: "16px", borderRadius: 10, background: "#fff", border: "1px solid #f1f5f9", boxShadow: "0 1px 3px rgba(0,0,0,0.02)" }}>
-                            <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, marginBottom: 4 }}>Trade Outlook</div>
-                            <div style={{ fontSize: 16, fontWeight: 800, color: "#059669" }}>Bullish</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </PageShell>
     );
 }
