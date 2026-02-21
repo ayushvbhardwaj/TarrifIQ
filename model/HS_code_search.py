@@ -20,7 +20,7 @@ megallm_client = OpenAI(
 )
 
 # === CONFIG ===
-MODEL_DIR = '/Users/ayushbhardwaj/Documents/TarrifIQ/data'
+MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
 
 FAISS_INDEX_FILE = os.path.join(MODEL_DIR, "hs_index.faiss")
 HS_CODES_FILE = os.path.join(MODEL_DIR, "hs_codes.csv")
@@ -50,8 +50,8 @@ def search(query: str, index, codes_df, model, top_k=TOP_K):
         row = codes_df.iloc[idx]
         results.append({
             "rank": rank,
-            "hs_code": row["hs_code"],
-            "description": row["embedding_text"],
+            "hs_code": str(row["hs_code"]),
+            "description": str(row["embedding_text"]),
             "score": round(float(score), 4),
         })
     return results

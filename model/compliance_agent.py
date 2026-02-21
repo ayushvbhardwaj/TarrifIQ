@@ -107,7 +107,9 @@ Return VALID JSON only in this exact format:
 
 Rules:
 - Be highly specific based ONLY on the provided context. If the context does not mention a specific rule, do not invent one.
-- Keep descriptions actionable.
+- Keep descriptions actionable and detailed (at least 2 sentences).
+- Generate a comprehensive checklist: try to find at least 5 to 10 distinct requirements across different categories (Certifications, Labelling, Customs, Taxes, Prohibitions).
+- Return JSON strictly matching the format above. No other text.
 - Return JSON strictly matching the format above. No other text.
 """
 
