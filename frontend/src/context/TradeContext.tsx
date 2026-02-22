@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
 export type TradeContextType = {
     // Raw form data matching what's in trade-input
@@ -20,6 +20,8 @@ export type TradeContextType = {
 
     // Computed data / pipeline state
     hsCode: string | null;
+    scenarios: any[];
+    landedCost: any | null;
 
     // Setters
     setTradeData: (data: Partial<Omit<TradeContextType, "setTradeData" | "clearTradeData">>) => void;
@@ -41,20 +43,53 @@ const defaultState: Omit<TradeContextType, "setTradeData" | "clearTradeData"> = 
     dest: "Select destination",
     transport: "Select transport mode",
     hsCode: null,
+    scenarios: [],
+    landedCost: null,
 };
 
 const TradeContext = createContext<TradeContextType | undefined>(undefined);
 
 export function TradeProvider({ children }: { children: ReactNode }) {
     const [state, setState] = useState(defaultState);
+    const [mounted, setMounted] = useState(false);
+
+    // Load from localStorage on mount
+    useEffect(() => {
+        setMounted(true);
+        try {
+            const saved = localStorage.getItem("tarrifiq_trade_data");
+            if (saved) {
+                setState(JSON.parse(saved));
+            }
+        } catch (e) {
+            console.error("Failed to load trade data from localStorage", e);
+        }
+    }, []);
 
     const setTradeData = (data: Partial<Omit<TradeContextType, "setTradeData" | "clearTradeData">>) => {
-        setState((prev) => ({ ...prev, ...data }));
+        setState((prev) => {
+            const newState = { ...prev, ...data };
+            try {
+                localStorage.setItem("tarrifiq_trade_data", JSON.stringify(newState));
+            } catch (e) {
+                console.error("Failed to save trade data to localStorage", e);
+            }
+            return newState;
+        });
     };
 
     const clearTradeData = () => {
         setState(defaultState);
+        try {
+            localStorage.removeItem("tarrifiq_trade_data");
+        } catch (e) { }
     };
+
+    // Prevent hydration mismatch by not rendering or rendering default until mounted
+    // However, rendering children is fine, it just might flash default values
+    if (!mounted) {
+        return <TradeContext.Provider value={{ ...defaultState, setTradeData, clearTradeData }}>{children}</TradeContext.Provider>;
+    }
 
     return (
         <TradeContext.Provider value={{ ...state, setTradeData, clearTradeData }}>

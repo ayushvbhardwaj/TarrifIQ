@@ -1,6 +1,7 @@
 "use client";
+import React from "react";
 import PageShell from "@/components/PageShell";
-import { Sparkles, Calendar, Globe, Hash, CheckCircle2, ChevronDown, Filter, Newspaper, CalendarDays, ArrowRight, X, Check, Activity, ShieldAlert, BarChart3 } from "lucide-react";
+import { Sparkles, Calendar, Globe, Hash, CheckCircle2, ChevronDown, Filter, Newspaper, CalendarDays, ArrowRight, X, Check, Activity, ShieldAlert, BarChart3, RefreshCw } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from "recharts";
 
 /* ── Data ───────────────────────────────────────── */
@@ -159,6 +160,77 @@ const getTagStyle = (type: string) => {
 
 /* ── Component ──────────────────────────────────── */
 export default function TariffNews() {
+    const [newsData, setNewsData] = React.useState<any[]>(NEWS_ITEMS);
+    const [loading, setLoading] = React.useState(true);
+
+    React.useEffect(() => {
+        const fetchNews = async () => {
+            try {
+                const res = await fetch("http://127.0.0.1:8000/api/news");
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.news && data.news.length > 0) {
+                        // Transform API response to match UI format
+                        const mappedNews = data.news.map((n: any, i: number) => {
+                            const p = n.analysis?.extracted_policy || {};
+                            const s = n.analysis?.strategic_analysis || {};
+
+                            // Determine impact type based on risk score or tariff direction
+                            let impactType = "neutral";
+                            let tags: any[] = [];
+
+                            if (p.tariff_direction === "increase" || s.risk_score > 6) {
+                                impactType = "negative";
+                                tags.push({ label: "High Risk", type: "negative" });
+                            } else if (p.tariff_direction === "decrease") {
+                                impactType = "positive";
+                                tags.push({ label: "Opportunity", type: "positive" });
+                            } else {
+                                impactType = "mixed";
+                                tags.push({ label: "Mixed Impact", type: "mixed" });
+                            }
+
+                            tags.push({ label: p.policy_type || "Trade Policy", type: "neutral" });
+
+                            let costImpactColor = impactType === "negative" ? "#ef4444" : impactType === "positive" ? "#10b981" : "#f59e0b";
+                            let costImpactStr = p.estimated_tariff_delta_percent ? `${p.estimated_tariff_delta_percent > 0 ? '+' : ''}${p.estimated_tariff_delta_percent}% Duty` : 'Unknown Impact';
+
+                            return {
+                                id: i + 100, // avoid clashing with static IDs if mixing
+                                tags: tags,
+                                headline: n.article.title,
+                                subHeadline: `Published: ${new Date(n.article.dateTime).toLocaleDateString()}`,
+                                aiSummary: s.impact_summary || "News analyzed, but no direct summary generated.",
+                                effectiveDate: p.effective_date || "TBD",
+                                countries: (p.affected_countries || []).join(", ") || "Global",
+                                hsCodes: (p.likely_affected_hs_chapters || []).map((ch: string) => ch.split(" ")[0]).join(", ") || "Multiple",
+                                sourceStatus: "Live Feed",
+                                changedText: `${p.tariff_direction?.toUpperCase() || 'CHANGE'} in tariffs expected.`,
+                                before: "Current Baseline",
+                                after: `${p.estimated_tariff_delta_percent}% Change`,
+                                costImpact: costImpactStr,
+                                costImpactColor: costImpactColor,
+                                whyText: `Winners: ${s.winners || 'N/A'}. Losers: ${s.losers || 'N/A'}.`,
+                                sectors: p.affected_sectors || ["General Trade"],
+                                source: n.article.source || "The News API",
+                                impactType: impactType,
+                                impactWarning: s.recommended_actions ? s.recommended_actions[0] : "Review exposure.",
+                                fullUrl: n.article.url
+                            };
+                        });
+                        setNewsData(mappedNews);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to load live news, falling back to samples", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchNews();
+    }, []);
+
     return (
         <PageShell title="Tariff News">
 
@@ -186,7 +258,15 @@ export default function TariffNews() {
 
             {/* News Cards with Separate Impact Block */}
             <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
-                {NEWS_ITEMS.map((item, i) => (
+                {loading && (
+                    <div className="glass-card card-shadow" style={{ padding: "40px 24px", textAlign: "center", borderRadius: 12 }}>
+                        <RefreshCw size={24} className="animate-spin-slow" color="#2563eb" style={{ margin: "0 auto 12px" }} />
+                        <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>Fetching Live Trade News & Running Policy Diagnostics...</div>
+                        <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>Connecting to The News API and analyzing impact with MegaLLM.</div>
+                    </div>
+                )}
+
+                {!loading && newsData.map((item, i) => (
                     <div key={item.id} className={`animate-fade-in-up delay-${(i % 5) * 100}`}>
 
                         {/* Main News Card */}
@@ -194,7 +274,7 @@ export default function TariffNews() {
 
                             {/* Tags */}
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                                {item.tags.map((tag, idx) => {
+                                {item.tags.map((tag: any, idx: number) => {
                                     const st = getTagStyle(tag.type);
                                     return (
                                         <div key={idx} style={{ display: "flex", alignItems: "center", background: st.bg, color: st.color, border: (st as any).border || "none", padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
@@ -290,7 +370,7 @@ export default function TariffNews() {
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: `1px dashed ${item.impactType === 'negative' ? "#fecdd3" : item.impactType === 'positive' ? "#bbf7d0" : "#fcd34d"}`, paddingTop: 16 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                     <span style={{ fontSize: 11, color: item.impactType === 'negative' ? "#be123c" : item.impactType === 'positive' ? "#047857" : "#b45309", fontWeight: 700 }}>Affected Sectors:</span>
-                                    {item.sectors.map(sec => (
+                                    {item.sectors.map((sec: string) => (
                                         <span key={sec} style={{ fontSize: 10, fontWeight: 700, color: item.impactType === 'negative' ? "#9f1239" : item.impactType === 'positive' ? "#064e3b" : "#92400e", border: `1px solid ${item.impactType === 'negative' ? "#fda4af" : item.impactType === 'positive' ? "#86efac" : "#fcd34d"}`, borderRadius: 4, padding: "2px 8px", background: item.impactType === 'negative' ? "#ffe4e6" : item.impactType === 'positive' ? "#dcfce7" : "#fef3c7" }}>{sec}</span>
                                     ))}
                                 </div>
@@ -300,7 +380,9 @@ export default function TariffNews() {
                         {/* Footer (Actions, Source) */}
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 16, padding: "0 8px" }}>
                             <div style={{ display: "flex", gap: 12 }}>
-                                <button style={{ background: "transparent", color: "#1e293b", border: "1.5px solid #e2e8f0", padding: "8px 16px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", backgroundColor: "#fff" }}>
+                                <button
+                                    onClick={() => item.fullUrl ? window.open(item.fullUrl, '_blank') : null}
+                                    style={{ background: "transparent", color: "#1e293b", border: "1.5px solid #e2e8f0", padding: "8px 16px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", backgroundColor: "#fff" }}>
                                     View Full Article
                                 </button>
                             </div>

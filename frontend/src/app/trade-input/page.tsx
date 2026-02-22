@@ -1,7 +1,8 @@
 "use client";
 import PageShell from "@/components/PageShell";
 import { useState } from "react";
-import { Globe, Sparkles, Package, DollarSign, MapPin, Weight, CheckCircle, Truck, ShieldCheck, AlertTriangle, RefreshCw, ChevronDown } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Globe, Sparkles, Package, DollarSign, MapPin, Weight, CheckCircle, Truck, ShieldCheck, AlertTriangle, RefreshCw, ChevronDown, UploadCloud, FileText } from "lucide-react";
 import { useTradeContext } from "@/context/TradeContext";
 
 /* ── helpers ── */
@@ -27,7 +28,7 @@ const ALL_COUNTRIES = [
 ];
 const ORIGINS = ["Select origin", ...ALL_COUNTRIES];
 const DESTS = ["Select destination", ...ALL_COUNTRIES];
-const TRANSPORTS = ["Select transport mode", "Sea Freight", "Air Freight", "Rail", "Road / Truck", "Multimodal"];
+const TRANSPORTS = ["Select transport mode", "Sea Freight", "Air Freight"];
 
 const inputBase: React.CSSProperties = {
     width: "100%", padding: "10px 13px", borderRadius: 8,
@@ -85,29 +86,88 @@ function Field({ label, required, children }: { label: string; required?: boolea
 
 /* ── page ── */
 export default function TradeInput() {
-    const { setTradeData, ...globalData } = useTradeContext();
+    const router = useRouter();
+    const tradeContext = useTradeContext();
 
-    // Initialize local form state with global data
+    // Check if category is standard or custom
+    const isStandardCategory = CATEGORIES.includes(tradeContext.category);
+
     const [f, setF] = useState({
-        name: globalData.name || "",
-        category: globalData.category || CATEGORIES[0],
-        customCategory: "",
-        description: globalData.description || "",
-        material: globalData.material || "",
-        intendedUse: globalData.intendedUse || "",
-        value: globalData.value || "",
-        currency: globalData.currency || CURRENCIES[0],
-        qty: globalData.qty || "",
-        weight: globalData.weight || "",
-        dimensions: globalData.dimensions || "",
-        origin: globalData.origin || ORIGINS[0],
-        dest: globalData.dest || DESTS[0],
-        transport: globalData.transport || TRANSPORTS[0],
+        name: tradeContext.name || "",
+        category: isStandardCategory ? tradeContext.category : "Other",
+        customCategory: isStandardCategory ? "" : tradeContext.category,
+        description: tradeContext.description || "",
+        material: tradeContext.material || "",
+        intendedUse: tradeContext.intendedUse || "",
+        value: tradeContext.value || "",
+        currency: tradeContext.currency || CURRENCIES[0],
+        qty: tradeContext.qty || "",
+        weight: tradeContext.weight || "",
+        dimensions: tradeContext.dimensions || "",
+        origin: tradeContext.origin || ORIGINS[0],
+        dest: tradeContext.dest || DESTS[0],
+        transport: tradeContext.transport || TRANSPORTS[0],
     });
     const set = (k: keyof typeof f) => (v: string) => { setF(p => ({ ...p, [k]: v })); setResult(null); };
 
     const [running, setRunning] = useState(false);
     const [result, setResult] = useState<null | "done">(null);
+
+    // PDF Upload State
+    const [isDragging, setIsDragging] = useState(false);
+    const [isParsing, setIsParsing] = useState(false);
+    const [uploadSuccess, setUploadSuccess] = useState(false);
+
+    const handleFile = async (file: File) => {
+        if (!file || file.type !== "application/pdf") {
+            alert("Please upload a valid PDF document.");
+            return;
+        }
+
+        setIsParsing(true);
+        setUploadSuccess(false);
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const res = await fetch("http://127.0.0.1:8000/api/parse-document", {
+                method: "POST",
+                body: formData
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                const d = data.extracted_data;
+
+                if (d) {
+                    setF(prev => ({
+                        ...prev,
+                        name: d.name || prev.name,
+                        category: CATEGORIES.includes(d.category) ? d.category : prev.category,
+                        customCategory: d.customCategory || prev.customCategory,
+                        description: d.description || prev.description,
+                        material: d.material || prev.material,
+                        intendedUse: d.intendedUse || prev.intendedUse,
+                        value: d.value ? String(d.value) : prev.value,
+                        qty: d.qty ? String(d.qty) : prev.qty,
+                        weight: d.weight ? String(d.weight) : prev.weight,
+                        dimensions: d.dimensions || prev.dimensions,
+                        origin: ALL_COUNTRIES.includes(d.origin) ? d.origin : prev.origin,
+                        dest: ALL_COUNTRIES.includes(d.dest) ? d.dest : prev.dest,
+                    }));
+                    setUploadSuccess(true);
+                    setTimeout(() => setUploadSuccess(false), 3000);
+                }
+            } else {
+                alert("Failed to parse document. Please try entering data manually.");
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Network error while uploading document.");
+        } finally {
+            setIsParsing(false);
+        }
+    };
 
     const canRun = !!(f.name && f.value && f.qty && f.origin !== ORIGINS[0] && f.dest !== DESTS[0] && f.transport !== TRANSPORTS[0] && (f.category !== "Other" || f.customCategory));
 
@@ -116,24 +176,17 @@ export default function TradeInput() {
         setRunning(true);
 
         // Save to global context
-        setTradeData({
-            name: f.name,
-            category: f.category === "Other" ? f.customCategory : f.category,
-            description: f.description,
-            material: f.material,
-            intendedUse: f.intendedUse,
-            value: f.value,
-            currency: f.currency,
-            qty: f.qty,
-            weight: f.weight,
-            dimensions: f.dimensions,
-            origin: f.origin,
-            dest: f.dest,
-            transport: f.transport,
-            hsCode: null // reset it so backend classifies new item
+        const { customCategory, ...rest } = f;
+        tradeContext.setTradeData({
+            ...rest,
+            category: f.category === "Other" ? f.customCategory : f.category
         });
 
-        setTimeout(() => { setRunning(false); setResult("done"); }, 2000);
+        // Navigate to the HS Code AI page which will auto-trigger classification
+        setTimeout(() => {
+            setRunning(false);
+            router.push("/hs-code");
+        }, 800);
     }
 
     return (
@@ -151,6 +204,62 @@ export default function TradeInput() {
 
             {/* Form card */}
             <div className="glass-card card-shadow animate-fade-in-up delay-300" style={{ padding: 32 }}>
+
+                {/* ── Document Auto-Fill ── */}
+                <div
+                    style={{
+                        marginBottom: 32,
+                        padding: "32px 24px",
+                        borderRadius: 12,
+                        border: `2px dashed ${isDragging ? "#3b82f6" : uploadSuccess ? "#10b981" : "var(--border)"}`,
+                        background: isDragging ? "rgba(59,130,246,0.05)" : uploadSuccess ? "rgba(16,185,129,0.05)" : "#fafafa",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        textAlign: "center",
+                        transition: "all 0.2s",
+                        position: "relative",
+                        overflow: "hidden"
+                    }}
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDragging(false);
+                        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                            handleFile(e.dataTransfer.files[0]);
+                        }
+                    }}
+                >
+                    {isParsing ? (
+                        <>
+                            <RefreshCw size={32} color="#3b82f6" className="animate-spin-slow" style={{ marginBottom: 12 }} />
+                            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>Extracting Data with AI...</div>
+                            <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Reading invoice and populating fields below</div>
+                        </>
+                    ) : uploadSuccess ? (
+                        <>
+                            <CheckCircle size={32} color="#10b981" style={{ marginBottom: 12 }} />
+                            <div style={{ fontSize: 15, fontWeight: 700, color: "#065f46" }}>Successfully Extracted Data!</div>
+                            <div style={{ fontSize: 13, color: "#047857", marginTop: 4 }}>Fields have been populated. Please review and edit if necessary.</div>
+                        </>
+                    ) : (
+                        <>
+                            <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#fff", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 16, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+                                <UploadCloud size={24} color="#64748b" />
+                            </div>
+                            <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)" }}>Upload Invoice or Spec Sheet</div>
+                            <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4, maxWidth: 400, lineHeight: 1.5 }}>
+                                Drop a PDF document here to automatically extract and populate the trade fields below using MegaLLM.
+                            </div>
+                            <label style={{ marginTop: 16, padding: "8px 16px", background: "#fff", border: "1.5px solid var(--border)", borderRadius: 8, fontSize: 13, fontWeight: 600, color: "var(--text-primary)", cursor: "pointer" }}>
+                                Browse Files
+                                <input type="file" accept=".pdf" style={{ display: "none" }} onChange={(e) => e.target.files && handleFile(e.target.files[0])} />
+                            </label>
+                        </>
+                    )}
+                </div>
 
                 {/* ── Section 1: Product Information ── */}
                 <SectionHeader icon={Package} title="Product Information" iconColor="#2563eb" />

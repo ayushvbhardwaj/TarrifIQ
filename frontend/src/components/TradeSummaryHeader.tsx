@@ -58,7 +58,7 @@ export default function TradeSummaryHeader() {
                     <div style={{ display: "flex", flexDirection: "column" }}>
                         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Total Value</span>
                         <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
-                            {currency.split(' ')[0]} {Number(value).toLocaleString()}
+                            {(currency || "").split(' ')[0]} {Number(String(value || "0").replace(/[^0-9.-]+/g, ""))?.toLocaleString()}
                         </span>
                     </div>
                 </div>
@@ -67,7 +67,7 @@ export default function TradeSummaryHeader() {
                     <Weight size={16} color="#94a3b8" />
                     <div style={{ display: "flex", flexDirection: "column" }}>
                         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Weight</span>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{Number(weight).toLocaleString()} kg</span>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{Number(String(weight || "0").replace(/[^0-9.-]+/g, ""))?.toLocaleString()} kg</span>
                     </div>
                 </div>
 

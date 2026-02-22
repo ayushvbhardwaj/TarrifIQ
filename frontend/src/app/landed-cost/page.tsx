@@ -1,8 +1,8 @@
 "use client";
 import PageShell from "@/components/PageShell";
 import TradeSummaryHeader from "@/components/TradeSummaryHeader";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { Calculator, FileText, Ship, Download, Play, TrendingDown, RefreshCw } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts";
+import { Calculator, FileText, Ship, Plane, RefreshCw, Zap } from "lucide-react";
 import { useTradeContext } from "@/context/TradeContext";
 import { useEffect, useState } from "react";
 
@@ -10,48 +10,69 @@ const highlightStyle = {
     blue: { bg: "#eff6ff", border: "#bfdbfe", left: "#2563eb", textColor: "#2563eb" },
     purple: { bg: "#faf5ff", border: "#ddd6fe", left: "#7c3aed", textColor: "#7c3aed" },
     green: { bg: "#f0fdf4", border: "#bbf7d0", left: "#059669", textColor: "#059669" },
+    base: { bg: "var(--bg-base)", border: "var(--border)", left: "transparent", textColor: "var(--text-primary)" }
 } as const;
 
-const fmt = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmt = (n: any) => {
+    const val = Number(n);
+    if (isNaN(val)) return "$0";
+    return `$${val.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+};
 
 export default function LandedCost() {
-    const { origin, dest, value, weight, transport, hsCode, description } = useTradeContext();
+    const { name, origin, dest, value, weight, transport, hsCode, description, setTradeData } = useTradeContext();
     const [loading, setLoading] = useState(false);
     const [apiData, setApiData] = useState<any>(null);
+    const [scenarios, setScenarios] = useState<any[]>([]);
+    const [error, setError] = useState<string | null>(null);
+
+    // What-if simulation state
+    const [simulatedTariffRate, setSimulatedTariffRate] = useState<number | null>(null);
 
     useEffect(() => {
-        if (!origin || !dest || !value) return;
+        if (!origin || !dest || !value || origin === "Select origin" || dest === "Select destination") return;
 
         const fetchCost = async () => {
             setLoading(true);
+            setError(null);
             try {
-                const res = await fetch("http://localhost:8000/api/landed-cost", {
+                const res = await fetch("http://127.0.0.1:8000/api/landed-cost", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        product_description: description,
+                        product_description: description || name || "Product",
                         origin: origin,
                         destination: dest,
-                        mode: transport.toLowerCase().includes("air") ? "air" : "sea",
-                        weight_kg: Number(weight),
-                        product_value: Number(value),
+                        mode: (transport || "").toLowerCase().includes("air") ? "air" : "sea",
+                        weight_kg: Number(weight?.replace(/[^0-9.-]+/g, "")) || 1,
+                        product_value: Number(value?.replace(/[^0-9.-]+/g, "")) || 0,
                         hs_code: hsCode,
                     })
                 });
 
                 if (res.ok) {
                     const data = await res.json();
-                    setApiData(data.landed_cost);
+                    if (data?.landed_cost) {
+                        setApiData(data.landed_cost);
+                        setScenarios(data.scenarios || []);
+                        setTradeData({ landedCost: data.landed_cost, scenarios: data.scenarios || [] });
+                    } else {
+                        throw new Error("Invalid response structure from engine");
+                    }
+                } else {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData?.detail || "Engine calculation failed");
                 }
-            } catch (err) {
+            } catch (err: any) {
                 console.error("Failed to fetch landed cost:", err);
+                setError(err.message);
             } finally {
                 setLoading(false);
             }
         };
 
         fetchCost();
-    }, [origin, dest, value, weight, transport, hsCode, description]);
+    }, [name, origin, dest, value, weight, transport, hsCode, description]);
 
     if (!value && !loading && !apiData) {
         return (
@@ -64,153 +85,245 @@ export default function LandedCost() {
         );
     }
 
-    // Default static fallback if API hasn't loaded (for visual structure)
-    const data = apiData || {
-        product_value: Number(value) || 0,
+    // Unified data object with safe defaults
+    const d = {
+        product_value: Number(value?.replace(/[^0-9.-]+/g, "")) || 0,
         shipping_cost: 0,
         insurance_cost: 0,
         cif_value: 0,
         tariff_rate: 0,
         import_duty: 0,
+        import_vat: 0,
+        gst_cost: 0,
+        cess_cost: 0,
+        handling_fees: 0,
+        doc_fees: 0,
         total_landed_cost: 0,
-        distance_km: 0
+        distance_km: 0,
+        weight_kg: Number(weight?.replace(/[^0-9.-]+/g, "")) || 1,
+        mode: "sea",
+        ...(apiData || {})
     };
 
+    // Derived values
+    const baseTariffRate = (Number(d.tariff_rate) || 0);
+    const activeTariffRate = simulatedTariffRate !== null ? simulatedTariffRate : baseTariffRate;
+
+    // Recalculate duties and taxes if we are simulating a different tariff rate
+    let activeDuty = d.import_duty;
+    let activeVat = d.import_vat;
+    let activeGst = d.gst_cost;
+    let activeCess = d.cess_cost;
+    let activeTotal = d.total_landed_cost;
+
+    if (simulatedTariffRate !== null) {
+        activeDuty = d.cif_value * (activeTariffRate / 100);
+        const dutiableValue = d.cif_value + activeDuty + activeCess;
+        activeVat = dutiableValue * 0.12;
+        activeGst = dutiableValue * 0.08;
+        activeTotal = d.cif_value + activeDuty + activeVat + activeGst + activeCess + d.handling_fees + d.doc_fees;
+    }
+
+    const costPerUnit = activeTotal / (d.weight_kg || 1); // treating kg as unit for sim
+
+    // Optimization math relative to best alternative scenario
+    let bestScenario = d;
+    if (scenarios.length > 0) {
+        bestScenario = scenarios.reduce((prev, curr) => curr.total_landed_cost < prev.total_landed_cost ? curr : prev, d);
+    }
+    const savings = Math.max(0, activeTotal - bestScenario.total_landed_cost);
+    const savingsPct = activeTotal > 0 ? (savings / activeTotal) * 100 : 0;
+
     const COST_ITEMS = [
-        { label: "Product Base Cost", sub: "FOB value of goods", amount: data.product_value, highlight: "blue", icon: null },
-        { label: "Freight Cost", sub: `${transport} (${data.distance_km} km limit)`, amount: data.shipping_cost, highlight: "green", icon: "ship" },
-        { label: "Insurance & Handling", sub: "Standard premium", amount: data.insurance_cost, highlight: null, icon: null },
-        { label: "Customs Duty", sub: `Tariff Rate: ${(data.tariff_rate * 100).toFixed(2)}%`, amount: data.import_duty, highlight: "purple", icon: null, note: "Applied to CIF Value" },
+        { label: "Product Base Cost", sub: "FOB value of goods", amount: d.product_value, highlight: "blue", icon: null },
+        { label: `Freight Cost (${d.mode === "air" ? "Air" : "Sea"})`, sub: `${d.mode === "air" ? "5" : "30"} days transit time`, amount: d.shipping_cost, highlight: "green", icon: d.mode === "air" ? "plane" : "ship" },
+        { label: "Insurance Cost", sub: "3% of Product Base Cost", amount: d.insurance_cost, highlight: "base", icon: null },
+        { label: "CIF Value (Taxable Basis)", sub: "Cost + Insurance + Freight", amount: d.cif_value, highlight: "purple", icon: null },
+        { label: "Customs Duty", sub: hsCode ? `HS ${hsCode} @ ${activeTariffRate.toFixed(1)}%` : `Tariff Rate: ${activeTariffRate.toFixed(1)}%`, amount: activeDuty, highlight: "purple", icon: null, note: `${activeTariffRate.toFixed(1)}% of CIF` },
+        { label: "Import VAT/GST", sub: "Standard rate 12%", amount: activeVat, highlight: "base", icon: null, note: "12% of (CIF + Duty + Cess)" },
+        { label: "GST (Goods & Services Tax)", sub: "Additional 8%", amount: activeGst, highlight: "base", icon: null, note: "8% of (CIF + Duty + Cess)" },
+        { label: "Additional Cess/Surcharge", sub: "Special levy 1.5%", amount: activeCess, highlight: "base", icon: null, note: "1.5% of CIF" },
+        { label: "Port Handling Fees", sub: "", amount: d.handling_fees, highlight: "base", icon: null },
+        { label: "Documentation Fees", sub: "", amount: d.doc_fees, highlight: "base", icon: null },
     ];
 
-    const CHART_DATA = [
-        { name: "Current Route", "Total Cost ($)": data.total_landed_cost },
-        { name: "Optimized Target", "Total Cost ($)": data.total_landed_cost * 0.85 }, // Simulated optimization
+    const chartData = [
+        { name: "Current Baseline", val: d.total_landed_cost, color: "#94a3b8" },
+        { name: "Simulated Scenario", val: activeTotal, color: "#8b5cf6" },
+        { name: "Best Global Option", val: bestScenario.total_landed_cost, color: "#10b981" },
     ];
 
     return (
         <PageShell title="Landed Cost">
             <TradeSummaryHeader />
 
-            {/* Page header */}
-            <div className="animate-fade-in-up" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                    <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(37,99,235,0.1)", border: "1px solid rgba(37,99,235,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <Calculator size={22} color="#2563eb" />
-                    </div>
-                    <div>
-                        <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", lineHeight: 1 }}>Landed Cost Engine</h1>
-                        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Real-time duty &amp; freight calculation</p>
-                    </div>
+            <div className="animate-fade-in-up" style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 24 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Calculator size={22} color="#10b981" />
+                </div>
+                <div>
+                    <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", lineHeight: 1 }}>Total Landed Cost Calculator</h1>
+                    <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Business value engine with comprehensive cost analysis</p>
                 </div>
                 {loading && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#2563eb', fontSize: 13, fontWeight: 600 }}>
-                        <RefreshCw size={14} className="animate-spin-slow" /> Calculating live rates...
+                    <div style={{ marginLeft: "auto", display: 'flex', alignItems: 'center', gap: 8, color: '#2563eb', fontSize: 13, fontWeight: 600 }}>
+                        <RefreshCw size={14} className="animate-spin-slow" /> Analyzing scenarios...
                     </div>
                 )}
             </div>
 
+            {error && (
+                <div className="animate-fade-in-up" style={{ padding: "12px 16px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fee2e2", color: "#991b1b", fontSize: 13, fontWeight: 500, marginTop: 16, display: "flex", alignItems: "center", gap: 8 }}>
+                    <RefreshCw size={14} /> {error}. Displaying fallback calculations.
+                </div>
+            )}
+
             {/* ── 3 KPI Cards ────────────────────── */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginTop: 24 }}>
                 {[
-                    { label: "Total Landed Cost", value: fmt(data.total_landed_cost), sub: "Final door-to-door cost", border: "#2563eb", bg: "#eff6ff", color: "#2563eb" },
-                    { label: "Total Customs Duty", value: fmt(data.import_duty), sub: `At ${(data.tariff_rate * 100).toFixed(2)}% rate`, border: "#7c3aed", bg: "#faf5ff", color: "#7c3aed" },
-                    { label: "Total Logistics Cost", value: fmt(data.shipping_cost + data.insurance_cost), sub: "Freight + Insurance", border: "#059669", bg: "#f0fdf4", color: "#059669" },
+                    { label: "Total Landed Cost", value: fmt(activeTotal), sub: `For ${d.weight_kg} units`, border: "#2563eb" },
+                    { label: "Cost Per Unit", value: fmt(costPerUnit), sub: "Including all charges", border: "#10b981", valueColor: "#10b981" },
+                    { label: "Optimization Potential", value: fmt(savings), sub: `${savingsPct.toFixed(1)}% reduction available`, border: "#8b5cf6", valueColor: "#8b5cf6" },
                 ].map((k, i) => (
-                    <div key={i} className="glass-card card-shadow animate-fade-in-up" style={{ padding: "20px 22px", borderLeft: `4px solid ${k.border}`, background: k.bg }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>{k.label}</div>
-                        <div style={{ fontSize: 26, fontWeight: 900, color: k.color, lineHeight: 1 }}>{loading ? "..." : k.value}</div>
-                        <div style={{ fontSize: 12, color: k.color, marginTop: 6, fontWeight: 500, opacity: 0.8 }}>{k.sub}</div>
+                    <div key={i} className="glass-card card-shadow animate-fade-in-up" style={{ padding: "20px 22px", borderLeft: `6px solid ${k.border}`, borderRight: '1px solid var(--border)', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', borderRadius: 10 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-muted)", marginBottom: 8 }}>{k.label}</div>
+                        <div style={{ fontSize: 32, fontWeight: 800, color: k.valueColor || "#2563eb", lineHeight: 1 }}>{loading ? "..." : k.value}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8, fontWeight: 400 }}>{loading ? "..." : k.sub}</div>
                     </div>
                 ))}
             </div>
 
-            {/* ── Mathematical Transparency Box ─────────── */}
-            <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: "16px 20px", marginTop: 14, border: "1px solid #cbd5e1", background: "#f8fafc" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Transparent Calculation Formula</div>
-                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, fontSize: 13, fontFamily: "monospace", color: "#0f172a" }}>
-                    <div style={{ padding: "4px 8px", background: "#e2e8f0", borderRadius: 6 }}>Duty {fmt(data.import_duty)}</div> =
-                    ( <div style={{ padding: "4px 8px", background: "#eff6ff", borderRadius: 6, color: "#2563eb" }}>Value {fmt(data.product_value)}</div> +
-                    <div style={{ padding: "4px 8px", background: "#f0fdf4", borderRadius: 6, color: "#059669" }}>Freight {fmt(data.shipping_cost)}</div> +
-                    <div style={{ padding: "4px 8px", background: "#f1f5f9", borderRadius: 6 }}>Insurance {fmt(data.insurance_cost)}</div> )
-                    × <div style={{ padding: "4px 8px", background: "#faf5ff", borderRadius: 6, color: "#7c3aed" }}>Tariff Rate {(data.tariff_rate * 100).toFixed(2)}%</div>
+            {/* ── Detailed Cost Breakdown ─────────── */}
+            <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: "20px 24px", marginTop: 24, borderRadius: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+                    <FileText size={18} color="#2563eb" />
+                    <span style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>Detailed Cost Breakdown</span>
                 </div>
-            </div>
-
-            {/* ── Shipping Logic Transparency Box ─────────── */}
-            <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: "16px 20px", marginTop: 14, border: "1px solid #bbf7d0", background: "#f0fdf4" }}>
-                <div style={{ fontSize: 11, fontWeight: 800, color: "#059669", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Transport &amp; Freight Assumptions ({transport})</div>
-                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, fontSize: 13, color: "#065f46", fontWeight: 500 }}>
-                    <span>📦 <b>Weight:</b> {Number(weight).toLocaleString()} kg</span>
-                    <span>📍 <b>Base Rate:</b> $250.00</span>
-                    <span>⚖️ <b>Per Kg:</b> $6.00</span>
-                    <span>🗺️ <b>Distance Multiplier:</b> {((data.distance_km || 1000) / 5000).toFixed(2)}x</span>
-                    <span style={{ marginLeft: "auto", fontFamily: "monospace", background: "#dcfce7", padding: "4px 8px", borderRadius: 6 }}>
-                        Cost = Base + (Weight × Per Kg × Multiplier)
-                    </span>
-                </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginTop: 24 }}>
-                {/* ── Detailed Cost Breakdown ─────────── */}
-                <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: 24 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-                        <FileText size={17} color="#2563eb" />
-                        <span style={{ fontSize: 15, fontWeight: 800, color: "var(--text-primary)" }}>Detailed Cost Breakdown</span>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                        {COST_ITEMS.map((item, i) => {
-                            const hs = item.highlight ? highlightStyle[item.highlight as keyof typeof highlightStyle] : null;
-                            return (
-                                <div key={i} style={{
-                                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                                    padding: "14px 16px", borderRadius: 10,
-                                    background: hs ? hs.bg : "var(--bg-base)",
-                                    border: `1px solid ${hs ? hs.border : "var(--border)"}`,
-                                    borderLeft: hs ? `4px solid ${hs.left}` : "1px solid var(--border)",
-                                }}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                        {item.icon === "ship" && <Ship size={18} color="#059669" />}
-                                        <div>
-                                            <div style={{ fontSize: 14, fontWeight: 700, color: hs ? hs.textColor : "var(--text-primary)" }}>{item.label}</div>
-                                            {item.sub && <div style={{ fontSize: 12, color: hs ? hs.textColor : "var(--text-muted)", marginTop: 2, fontWeight: 500, opacity: hs ? 0.8 : 1 }}>{item.sub}</div>}
-                                        </div>
-                                    </div>
-                                    <div style={{ textAlign: "right" }}>
-                                        <div style={{ fontSize: 16, fontWeight: 800, color: hs ? hs.textColor : "var(--text-primary)" }}>{loading ? "..." : fmt(item.amount)}</div>
-                                        {item.note && <div style={{ fontSize: 11, color: hs ? hs.textColor : "var(--text-muted)", fontWeight: 500, opacity: 0.75 }}>{item.note}</div>}
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {COST_ITEMS.map((item, i) => {
+                        const hs = highlightStyle[item.highlight as keyof typeof highlightStyle];
+                        return (
+                            <div key={i} style={{
+                                display: "flex", alignItems: "center", justifyContent: "space-between",
+                                padding: "16px 20px", borderRadius: 8,
+                                background: hs.bg,
+                                border: `1px solid ${hs.border}`,
+                                borderLeft: item.highlight !== 'base' ? `4px solid ${hs.left}` : `1px solid ${hs.border}`,
+                            }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                    {item.icon === "ship" && <Ship size={18} color={hs.textColor} />}
+                                    {item.icon === "plane" && <Plane size={18} color={hs.textColor} />}
+                                    <div>
+                                        <div style={{ fontSize: 14, fontWeight: 600, color: hs.textColor }}>{item.label}</div>
+                                        {item.sub && <div style={{ fontSize: 13, color: item.highlight !== 'base' ? hs.textColor : "var(--text-muted)", marginTop: 2, fontWeight: 400, opacity: item.highlight !== 'base' ? 0.8 : 1 }}>{item.sub}</div>}
                                     </div>
                                 </div>
-                            );
-                        })}
-                        {/* Total row */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 20px", borderRadius: 10, background: "linear-gradient(135deg,#7c3aed,#6d28d9)", marginTop: 4 }}>
-                            <div>
-                                <div style={{ fontSize: 13, fontWeight: 800, color: "rgba(255,255,255,0.8)", textTransform: "uppercase", letterSpacing: 1 }}>TOTAL LANDED COST</div>
-                                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)", marginTop: 2 }}>All-inclusive final cost</div>
+                                <div style={{ textAlign: "right" }}>
+                                    <div style={{ fontSize: 16, fontWeight: 700, color: item.highlight !== 'base' ? hs.textColor : "var(--text-primary)" }}>{loading ? "..." : fmt(item.amount)}</div>
+                                    {item.note && <div style={{ fontSize: 11, color: hs.textColor, fontWeight: 500, opacity: 0.75 }}>{item.note}</div>}
+                                </div>
                             </div>
-                            <div style={{ fontSize: 26, fontWeight: 900, color: "#fff" }}>{loading ? "..." : fmt(data.total_landed_cost)}</div>
+                        );
+                    })}
+                    {/* Total row */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px", borderRadius: 8, background: "linear-gradient(135deg,#8b5cf6,#6d28d9)", marginTop: 6 }}>
+                        <div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", textTransform: "uppercase", letterSpacing: 0.5 }}>TOTAL LANDED COST</div>
+                            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", marginTop: 4 }}>All-inclusive final cost</div>
                         </div>
+                        <div style={{ fontSize: 28, fontWeight: 800, color: "#fff" }}>{loading ? "..." : fmt(activeTotal)}</div>
+                    </div>
+                </div>
+            </div>
+
+            {/* ── Cost Optimization Analysis Chart ─────────── */}
+            <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: "20px 24px", marginTop: 24, borderRadius: 12 }}>
+                <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>Cost Optimization Analysis</div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>Comparison between current and optimized scenarios</div>
+                </div>
+                <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 13, fill: "#64748b" }} axisLine={false} tickLine={false} />
+                        <YAxis hide domain={[0, 'auto']} />
+                        <Tooltip formatter={(v: any) => [`$${Number(v).toLocaleString()}`, "Amount"]} cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: 8, border: "1px solid #e2e8f0", fontSize: 13 }} />
+                        <Bar dataKey="val" radius={[4, 4, 0, 0]} maxBarSize={200}>
+                            {chartData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+
+            {/* ── What-If Simulation ─────────── */}
+            <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: "24px", marginTop: 24, borderRadius: 12 }}>
+                <div style={{ marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
+                    <Calculator size={18} color="#2563eb" />
+                    <div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>Tariff Rate What-If Simulation</div>
+                        <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>Dynamically adjust tariff rates to see cascading impacts on customs duty, VAT, GST, and Total Landed Cost.</div>
                     </div>
                 </div>
 
-                {/* ── Cost Optimization Chart ─────────── */}
-                <div className="glass-card card-shadow animate-fade-in-up" style={{ padding: 24 }}>
-                    <div style={{ marginBottom: 16 }}>
-                        <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text-primary)" }}>Route Comparison Overview</div>
-                        <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>Live charting based on contextual pipeline</div>
+                <div style={{ padding: "20px", background: "var(--bg-base)", borderRadius: 8, border: "1px solid var(--border)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>Simulate Tariff Rate (%)</span>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            <span style={{ fontSize: 22, fontWeight: 800, color: "#8b5cf6" }}>{activeTariffRate.toFixed(1)}%</span>
+                            {simulatedTariffRate !== null && simulatedTariffRate !== baseTariffRate && (
+                                <button
+                                    onClick={() => setSimulatedTariffRate(null)}
+                                    style={{ padding: "4px 8px", fontSize: 11, background: "#f1f5f9", border: "none", borderRadius: 4, cursor: "pointer", color: "#64748b", fontWeight: 600 }}
+                                >
+                                    Reset to Base ({baseTariffRate.toFixed(1)}%)
+                                </button>
+                            )}
+                        </div>
                     </div>
-                    <ResponsiveContainer width="100%" height={320}>
-                        <BarChart data={CHART_DATA} margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.06)" vertical={false} />
-                            <XAxis dataKey="name" tick={{ fontSize: 13, fontWeight: 600, fill: "#334155" }} axisLine={false} tickLine={false} />
-                            <YAxis tickFormatter={v => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 12, fill: "#64748b" }} axisLine={false} tickLine={false} />
-                            <Tooltip formatter={(v: any) => [`$${Number(v).toLocaleString()}`, "Total Cost"]} contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 13 }} />
-                            <Bar dataKey="Total Cost ($)" fill="#7c3aed" radius={[6, 6, 0, 0]} />
-                        </BarChart>
-                    </ResponsiveContainer>
+
+                    <input
+                        type="range"
+                        min="0"
+                        max="50"
+                        step="0.1"
+                        value={activeTariffRate}
+                        onChange={(e) => setSimulatedTariffRate(parseFloat(e.target.value))}
+                        style={{ width: "100%", cursor: "pointer", accentColor: "#8b5cf6" }}
+                    />
+
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
+                        <span>0%</span>
+                        <span>25%</span>
+                        <span>50%</span>
+                    </div>
+
+                    {simulatedTariffRate !== null && simulatedTariffRate !== baseTariffRate && (
+                        <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                                <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 4 }}>Simulated Total Cost</div>
+                                <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text-primary)" }}>{fmt(activeTotal)}</div>
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                                <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 4 }}>Difference vs Baseline</div>
+                                <div style={{ fontSize: 16, fontWeight: 700, color: activeTotal > d.total_landed_cost ? "#ef4444" : "#10b981" }}>
+                                    {activeTotal > d.total_landed_cost ? '+' : ''}{fmt(activeTotal - d.total_landed_cost)}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
+
+            {/* ── Action Buttons ─────────── */}
+            <div className="animate-fade-in-up" style={{ display: "flex", gap: 16, marginTop: 24 }}>
+                <button className="btn-primary" style={{ flex: 1, padding: "16px", fontSize: 15, fontWeight: 600, borderRadius: 8, background: "#3b82f6", color: "white", border: "none", cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
+                    <FileText size={18} /> Export Cost Analysis Report (PDF)
+                </button>
+            </div>
+
+            <div style={{ height: 40 }} />
         </PageShell>
     );
 }
