@@ -16,10 +16,10 @@ const pieData = [
 ];
 
 const barData = [
-    { route: "China→USA Sea", cost: 13500 },
-    { route: "Vietnam→USA Sea", cost: 12100 },
-    { route: "China→USA Air", cost: 18000 },
-    { route: "India→USA Sea", cost: 11500 },
+    { route: "China→United States Sea", cost: 13500 },
+    { route: "Vietnam→United States Sea", cost: 12100 },
+    { route: "China→United States Air", cost: 18000 },
+    { route: "India→United States Sea", cost: 11500 },
 ];
 
 const TICK_STYLE = { fontSize: 11, fill: "#64748b" };
@@ -137,7 +137,7 @@ export function ChartsSection() {
                 <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                     <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981" }} />
                     <span style={{ color: "var(--text-muted)" }}>Best:</span>
-                    <span style={{ color: "#10b981", fontWeight: 700 }}>India→USA Sea — $11,500</span>
+                    <span style={{ color: "#10b981", fontWeight: 700 }}>India→United States Sea — $11,500</span>
                     <span style={{ marginLeft: "auto", color: "var(--success)", fontWeight: 600, fontSize: 11, background: "rgba(16,185,129,0.1)", padding: "2px 8px", borderRadius: 99, border: "1px solid rgba(16,185,129,0.2)" }}>
                         -15% savings
                     </span>

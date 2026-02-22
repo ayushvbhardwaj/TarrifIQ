@@ -240,8 +240,12 @@ def calculate_landed_cost(
 
     total = round(cif_value + import_duty + import_vat + gst_cost + cess_cost + handling_fees + doc_fees, 2)
 
+    def format_country(name):
+        n = name.strip().lower()
+        return COUNTRY_NAME_MAP.get(n, n.title())
+
     return {
-        "route": f"{_normalize(origin)} → {_normalize(destination)}",
+        "route": f"{format_country(origin)} → {format_country(destination)}",
         "mode": mode.strip().lower(),
         "distance_km": shipping["distance_km"],
         "distance_factor": shipping["distance_factor"],

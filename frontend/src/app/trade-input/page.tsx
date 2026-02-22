@@ -23,7 +23,7 @@ const ALL_COUNTRIES = [
     "Portugal", "Qatar", "Romania", "Russia", "Saudi Arabia", "Senegal", "Serbia", "Singapore",
     "Slovakia", "Slovenia", "South Africa", "South Korea", "Spain", "Sri Lanka", "Sudan",
     "Sweden", "Switzerland", "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Tunisia",
-    "Turkey", "Turkmenistan", "UAE", "Uganda", "UK", "Ukraine", "Uruguay", "USA", "Uzbekistan",
+    "Turkey", "Turkmenistan", "United Arab Emirates", "Uganda", "United Kingdom", "Ukraine", "Uruguay", "United States", "Uzbekistan",
     "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe",
 ];
 const ORIGINS = ["Select origin", ...ALL_COUNTRIES];
@@ -386,7 +386,7 @@ export default function TradeInput() {
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
                         {[
                             { icon: DollarSign, label: "Estimated Landed Cost", val: "$13,101", color: "#2563eb" },
-                            { icon: Truck, label: "Recommended Route", val: "Vietnam → USA Sea", color: "#059669" },
+                            { icon: Truck, label: "Recommended Route", val: "Vietnam → United States Sea", color: "#059669" },
                             { icon: ShieldCheck, label: "HS Code Detected", val: "8471.30", color: "#7c3aed" },
                             { icon: AlertTriangle, label: "Compliance Flags", val: "2 warnings", color: "#d97706" },
                         ].map(r => (

@@ -17,7 +17,7 @@ const trendData = [
 const recommendations = [
     {
         icon: TrendingDown,
-        title: "Switch to Vietnam → USA Sea Route",
+        title: "Switch to Vietnam → United States Sea Route",
         detail: "Est. savings of $1,400 per shipment — 10.4% reduction in landed cost",
         badge: "−$1,400",
     },

@@ -11,8 +11,8 @@ export default function TradeSummaryHeader() {
 
     return (
         <div className="animate-fade-in-down" style={{
-            background: "rgba(15, 23, 42, 0.4)",
-            border: "1px solid rgba(255, 255, 255, 0.05)",
+            background: "rgba(255, 255, 255, 0.7)",
+            border: "1px solid var(--border)",
             backdropFilter: "blur(12px)",
             borderRadius: "16px",
             padding: "16px 24px",
@@ -22,7 +22,7 @@ export default function TradeSummaryHeader() {
             justifyContent: "space-between",
             flexWrap: "wrap",
             gap: "16px",
-            boxShadow: "0 10px 30px -10px rgba(0,0,0,0.3)"
+            boxShadow: "0 10px 30px -10px rgba(0,0,0,0.05)"
         }}>
             {/* Primary Info */}
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -81,7 +81,7 @@ export default function TradeSummaryHeader() {
             </div>
 
             {/* Credibility Footer - Required for Judging */}
-            <div style={{ width: "100%", marginTop: "8px", paddingTop: "12px", borderTop: "1px dashed rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "#64748b" }}>
+            <div style={{ width: "100%", marginTop: "8px", paddingTop: "12px", borderTop: "1px dashed var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "#64748b" }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <ShieldAlert size={12} /> Live Analysis Session
                 </span>
