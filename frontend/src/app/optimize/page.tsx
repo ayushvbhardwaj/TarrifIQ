@@ -314,10 +314,29 @@ export default function Optimize() {
                                                     {vendorsLoading && <RefreshCw size={14} className="animate-spin-slow" color="#2563eb" style={{ marginLeft: "auto" }} />}
                                                 </div>
 
-                                                {vendorsData.length > 0 ? (
+                                                {vendorsLoading ? (
+                                                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                                        {[1, 2, 3].map(i => (
+                                                            <div key={i} className="animate-pulse" style={{ padding: "12px", background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0", display: "flex", alignItems: "flex-start", gap: 12 }}>
+                                                                <div style={{ flex: 1 }}>
+                                                                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                                                                        <div style={{ width: "30%", height: 14, background: "#e2e8f0", borderRadius: 4 }} />
+                                                                        <div style={{ width: 40, height: 10, background: "#f1f5f9", borderRadius: 4 }} />
+                                                                    </div>
+                                                                    <div style={{ width: "95%", height: 10, background: "#f1f5f9", borderRadius: 4, marginBottom: 4 }} />
+                                                                    <div style={{ width: "70%", height: 10, background: "#f1f5f9", borderRadius: 4 }} />
+                                                                </div>
+                                                                <div style={{ textAlign: "right", minWidth: 60 }}>
+                                                                    <div style={{ width: 40, height: 8, background: "#f1f5f9", borderRadius: 4, marginLeft: "auto", marginBottom: 4 }} />
+                                                                    <div style={{ width: 50, height: 20, background: "#e2e8f0", borderRadius: 4, marginLeft: "auto" }} />
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : vendorsData.length > 0 ? (
                                                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                                         {vendorsData.map((v, vidx) => (
-                                                            <div key={vidx} style={{ padding: "12px", background: "#fff", borderRadius: 8, border: "1px solid #e2e8f0", display: "flex", alignItems: "flex-start", gap: 12 }}>
+                                                            <div key={vidx} className="animate-fade-in-up" style={{ padding: "12px", background: "#fff", borderRadius: 8, border: "1px solid #e2e8f0", display: "flex", alignItems: "flex-start", gap: 12, transition: "all 0.2s" }}>
                                                                 <div style={{ flex: 1 }}>
                                                                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                                                                         <a href={v.website} target="_blank" rel="noreferrer" style={{ fontSize: 14, fontWeight: 800, color: "#2563eb", textDecoration: "none" }}>{v.name}</a>
@@ -335,7 +354,7 @@ export default function Optimize() {
                                                         ))}
                                                     </div>
                                                 ) : (
-                                                    !vendorsLoading && <div style={{ fontSize: 13, color: "var(--text-muted)" }}>No verified vendors found yet for this region.</div>
+                                                    <div style={{ fontSize: 13, color: "var(--text-muted)" }}>No verified vendors found yet for this region.</div>
                                                 )}
                                             </div>
                                         )}

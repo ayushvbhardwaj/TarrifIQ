@@ -98,18 +98,17 @@ Classification Rules:
 1. Apply General Rules of Interpretation (GRI) where relevant.
 2. Consider material composition, processing stage, function, and specificity.
 3. Prefer the most specific heading that accurately matches the product.
-4. If critical information is missing (e.g., weight, percentage composition, processing level),
-   explicitly state this and reduce confidence accordingly.
+4. If critical information is missing, explicitly state this and reduce confidence accordingly.
 5. You MUST choose ONLY from the provided HS codes.
-6. You MUST NOT invent, modify, or suggest codes outside the list.
+6. You MUST provide an individual confidence score (0.0 to 1.0) for EVERY candidate in the list.
 7. If none perfectly match, select the closest legally defensible option from the list.
 
 Output Requirements:
 
 - Return VALID JSON only.
 - Do not include explanations outside JSON.
-- Confidence must be a decimal between 0 and 1.
-- If uncertainty exists, confidence must be below 0.8.
+- Global "confidence" refers to your certainty in the "primary_hs" selection.
+- Provide individual "score" for each item in "candidate_results".
 
 Return JSON in exactly this format:
 
@@ -124,10 +123,13 @@ Return JSON in exactly this format:
     "information_gaps": "",
     "final_justification": ""
   }},
-  "candidate_explanations": {{
-    "1234.56": "Brief reasoning why this code is or isn't a good match",
-    "7890.12": "Brief reasoning..."
-  }}
+  "candidate_results": [
+    {{
+      "hs_code": "1234.56",
+      "score": 0.0,
+      "explanation": "Brief reasoning"
+    }}
+  ]
 }}
 """
 
@@ -146,16 +148,18 @@ Return JSON in exactly this format:
         content = re.sub(r"^```(?:json)?\s*", "", content)
         content = re.sub(r"\s*```$", "", content)
 
-    except Exception as e:
-        print("LLM request failed:", e)
-        return None
-
-    # Try parsing JSON
-    try:
+        # Try parsing JSON
         parsed = json.loads(content)
-    except json.JSONDecodeError:
-        print("Invalid JSON returned by LLM:")
-        print(content)
+        
+        # Map candidate_results to a flatter structure for server.py compatibility
+        results_map = {res["hs_code"]: res for res in parsed.get("candidate_results", [])}
+        parsed["candidate_explanations"] = {k: v["explanation"] for k, v in results_map.items()}
+        parsed["candidate_scores"] = {k: v["score"] for k, v in results_map.items()}
+        
+        return parsed
+
+    except Exception as e:
+        print("LLM request or parsing failed:", e)
         return None
 
     # Validate returned code (compare as strings to avoid int/str mismatch)

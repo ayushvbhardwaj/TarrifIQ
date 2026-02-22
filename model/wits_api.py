@@ -14,6 +14,7 @@ API Docs: https://wits.worldbank.org/API/V1/SDMX/V21/rest/doc
 """
 
 import requests
+from functools import lru_cache
 
 # ── Base URLs ───────────────────────────────────────────────────────
 TRADESTATS_BASE = (
@@ -151,6 +152,7 @@ def _resolve_iso3(code_or_name: str) -> str:
 #  Endpoint 1: TradeStats-Tariff (aggregate, reliable)
 # ═══════════════════════════════════════════════════════════════════
 
+@lru_cache(maxsize=128)
 def get_tradestats_tariff(
     reporter: str,
     partner: str,
@@ -315,6 +317,7 @@ def get_tariff_for_hs_category(
 #  Endpoint 2: TRN / TRAINS (HS-6, intermittently available)
 # ═══════════════════════════════════════════════════════════════════
 
+@lru_cache(maxsize=128)
 def get_tariff_rate_trains(
     reporter: str,
     partner: str,

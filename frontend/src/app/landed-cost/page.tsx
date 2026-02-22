@@ -153,6 +153,43 @@ export default function LandedCost() {
         { name: "Best Global Option", val: bestScenario.total_landed_cost, color: "#10b981" },
     ];
 
+    const handleExport = () => {
+        if (!apiData) return;
+
+        const reportData = {
+            metadata: {
+                product_name: description || name || "Product",
+                hs_code: hsCode,
+                export_date: new Date().toISOString(),
+                origin: origin,
+                destination: dest,
+                weight_kg: d.weight_kg,
+            },
+            current_scenario: {
+                ...d,
+                simulated_tariff_rate: simulatedTariffRate,
+                effective_total_cost: activeTotal,
+            },
+            cost_breakdown: COST_ITEMS.map(item => ({
+                component: item.label,
+                description: item.sub,
+                amount: item.amount,
+                note: item.note || ""
+            })),
+            alternative_scenarios: scenarios
+        };
+
+        const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `landed_cost_report_${hsCode || "export"}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
     return (
         <PageShell title="Landed Cost">
             <TradeSummaryHeader />
@@ -318,8 +355,13 @@ export default function LandedCost() {
 
             {/* ── Action Buttons ─────────── */}
             <div className="animate-fade-in-up" style={{ display: "flex", gap: 16, marginTop: 24 }}>
-                <button className="btn-primary" style={{ flex: 1, padding: "16px", fontSize: 15, fontWeight: 600, borderRadius: 8, background: "#3b82f6", color: "white", border: "none", cursor: "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
-                    <FileText size={18} /> Export Cost Analysis Report (PDF)
+                <button
+                    onClick={handleExport}
+                    disabled={!apiData}
+                    className="btn-primary"
+                    style={{ flex: 1, padding: "16px", fontSize: 15, fontWeight: 600, borderRadius: 8, background: "#3b82f6", color: "white", border: "none", cursor: !apiData ? "not-allowed" : "pointer", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, opacity: !apiData ? 0.6 : 1 }}
+                >
+                    <FileText size={18} /> Export Cost Analysis Report (JSON)
                 </button>
             </div>
 

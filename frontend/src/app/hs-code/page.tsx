@@ -52,16 +52,23 @@ export default function HSCode() {
 
                 // Enhance candidates for the UI
                 const candidateExplanations = data.reranked?.candidate_explanations || {};
-                const enhancedCandidates = (data.candidates || []).map((c: any, i: number) => ({
-                    ...c,
-                    duty_rate: i === 0 ? "32.0%" : "19.7%", // Placeholders based on screenshot
-                    risk: i === 0 ? "Medium" : "High",
-                    reasoning: candidateExplanations[c.hs_code] || `Alternative classification if material composition differs or standard interpretation rules apply.`
-                }));
+                const enhancedCandidates = (data.candidates || []).map((c: any, i: number) => {
+                    const aiScore = c.ai_score || 0;
+                    let risk = "High";
+                    if (aiScore > 0.8) risk = "Low";
+                    else if (aiScore > 0.5) risk = "Medium";
+
+                    return {
+                        ...c,
+                        duty_rate: i === 0 ? "32.0%" : "19.7%", // Placeholders based on screenshot
+                        risk: risk,
+                        reasoning: candidateExplanations[c.hs_code] || `Alternative classification if material composition differs or standard interpretation rules apply.`
+                    };
+                });
                 setCandidates(enhancedCandidates);
 
-                // Auto-set the best HS code to global context if not set manually
-                if (!hsCode && enhancedResult.primary_hs) {
+                // Auto-set the best HS code to global context
+                if (enhancedResult.primary_hs) {
                     setTradeData({ hsCode: String(enhancedResult.primary_hs) });
                 }
             } else {
@@ -179,10 +186,10 @@ export default function HSCode() {
                                 <div style={{ marginBottom: 20 }}>
                                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                                         <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>AI Confidence Score</span>
-                                        <span style={{ fontSize: 13, fontWeight: 800, color: "#7c3aed" }}>{isRecommended ? Math.round((classificationResult.confidence || 0) * 100) : Math.max(30, 85 - (idx * 15))}%</span>
+                                        <span style={{ fontSize: 13, fontWeight: 800, color: "#7c3aed" }}>{Math.round((c.ai_score || 0) * 100)}%</span>
                                     </div>
                                     <div style={{ height: 6, borderRadius: 99, background: "#f1f5f9", overflow: "hidden" }}>
-                                        <div style={{ height: "100%", width: `${isRecommended ? Math.round((classificationResult.confidence || 0) * 100) : Math.max(30, 85 - (idx * 15))}%`, background: "#0f172a", borderRadius: 99 }} />
+                                        <div style={{ height: "100%", width: `${Math.round((c.ai_score || 0) * 100)}%`, background: "#0f172a", borderRadius: 99 }} />
                                     </div>
                                 </div>
 

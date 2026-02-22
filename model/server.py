@@ -15,6 +15,10 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+import threading
+
+# Global lock for thread-safe model access
+model_lock = threading.Lock()
 
 # ── Ensure model/ is importable ──────────────────────────────────
 MODEL_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -112,13 +116,14 @@ def classify(req: ClassifyRequest):
         raise HTTPException(status_code=503, detail="Models not loaded yet. Try again shortly.")
 
     # FAISS search
-    candidates = search(
-        query=req.product_description,
-        index=faiss_index,
-        codes_df=codes_df,
-        model=sentence_model,
-        top_k=6,
-    )
+    with model_lock:
+        candidates = search(
+            query=req.product_description,
+            index=faiss_index,
+            codes_df=codes_df,
+            model=sentence_model,
+            top_k=6,
+        )
 
     if not candidates:
         raise HTTPException(status_code=404, detail="No HS code candidates found.")
@@ -126,17 +131,20 @@ def classify(req: ClassifyRequest):
     # LLM reranking
     reranked = None
     explanations = {}
+    candidate_scores = {}
     try:
         reranked = rerank_with_llm(req.product_description, candidates)
-        if reranked and "candidate_explanations" in reranked:
-            explanations = reranked["candidate_explanations"]
+        if reranked:
+            explanations = reranked.get("candidate_explanations", {})
+            candidate_scores = reranked.get("candidate_scores", {})
     except Exception as e:
         print(f"LLM reranking failed: {e}")
 
-    # Attach explanation to each candidate
+    # Attach explanation and dynamic score to each candidate
     for cand in candidates:
         code = cand.get("hs_code")
         cand["reasoning"] = explanations.get(code, "Alternative classification based on standard interpretation.")
+        cand["ai_score"] = candidate_scores.get(code, 0.0)
 
     return {
         "candidates": candidates,
@@ -161,13 +169,14 @@ def landed_cost(req: LandedCostRequest):
         if faiss_index is None or codes_df is None or sentence_model is None:
             raise HTTPException(status_code=503, detail="Models not loaded yet.")
 
-        candidates = search(
-            query=req.product_description,
-            index=faiss_index,
-            codes_df=codes_df,
-            model=sentence_model,
-            top_k=6,
-        )
+        with model_lock:
+            candidates = search(
+                query=req.product_description,
+                index=faiss_index,
+                codes_df=codes_df,
+                model=sentence_model,
+                top_k=6,
+            )
 
         if candidates:
             reranked = None
@@ -263,6 +272,8 @@ def compliance_check(req: ComplianceRequest):
     try:
         result = run_compliance_check(req.destination, req.product_description)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Compliance check failed: {e}")
 
     if not result:

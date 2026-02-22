@@ -117,6 +117,31 @@ FILE_NAME_MAP = {
     "vietnam": "vietnam",
 }
 
+# ── Global CSV Cache ───────────────────────────────────────────────
+_CSV_CACHE = {}
+
+def load_cross_country_data(reporter: str, partner: str) -> pd.DataFrame | None:
+    """
+    Load and cache the cross-country tariff CSV for a reporter→partner route.
+    """
+    r = _normalize(reporter)
+    p = _normalize(partner)
+    r_file = FILE_NAME_MAP.get(r, r)
+    p_file = FILE_NAME_MAP.get(p, p)
+
+    filename = f"{r_file}-{p_file}.csv"
+    if filename in _CSV_CACHE:
+        return _CSV_CACHE[filename]
+
+    filepath = os.path.join(CROSS_COUNTRY_DIR, filename)
+
+    if not os.path.exists(filepath):
+        return None
+
+    df = pd.read_csv(filepath, dtype={"hs_code": str})
+    _CSV_CACHE[filename] = df
+    return df
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  Core Functions
@@ -324,28 +349,6 @@ def calculate_landed_cost_live(
 #  Cross-Country Data Functions
 # ═══════════════════════════════════════════════════════════════════
 
-def load_cross_country_data(reporter: str, partner: str) -> pd.DataFrame | None:
-    """
-    Load the cross-country tariff CSV for a reporter→partner route.
-    Returns DataFrame with columns:
-        Reporter, Year, Partner, Product, MFNRate, AppliedTariff,
-        TotalTariffLines, IsTraded, hs_code
-    """
-    r = _normalize(reporter)
-    p = _normalize(partner)
-    r_file = FILE_NAME_MAP.get(r, r)
-    p_file = FILE_NAME_MAP.get(p, p)
-
-    filename = f"{r_file}-{p_file}.csv"
-    filepath = os.path.join(CROSS_COUNTRY_DIR, filename)
-
-    if not os.path.exists(filepath):
-        return None
-
-    df = pd.read_csv(filepath, dtype={"hs_code": str})
-    return df
-
-
 def lookup_landed_cost_by_country(
     hs_code: str,
     origin: str,
@@ -439,31 +442,33 @@ def compare_origins_live(
     year: int = 2021,
 ) -> list[dict]:
     """
-    LIVE WITS API version of compare_origins. 
-    Queries actual preferential tariffs to find the cheapest FTA route.
+    Concurrent version of compare_origins_live to speed up calculation.
     """
+    from concurrent.futures import ThreadPoolExecutor
+
     if origins is None:
         origins = [c for c in SUPPORTED_COUNTRIES if c != _normalize(my_country)]
 
     results = []
 
-    for src in origins:
+    def task(src):
         src = _normalize(src)
         if src == _normalize(my_country):
-            continue
-
-        result = calculate_landed_cost_live(
+            return None
+        return calculate_landed_cost_live(
             origin=src, destination=my_country, hs_code=hs_code,
             mode=mode, weight_kg=weight_kg, product_value=product_value,
             year=year
         )
 
-        if result is not None:
-            results.append(result)
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(task, src) for src in origins]
+        for f in futures:
+            res = f.result()
+            if res:
+                results.append(res)
 
-    # Sort by cheapest landed cost
     results.sort(key=lambda r: r["total_landed_cost"])
-
     return results
 
 
@@ -547,4 +552,3 @@ if __name__ == "__main__":
         print("  No live comparison data found for this HS code.")
 
     print(f"\n{'━' * 70}")
-

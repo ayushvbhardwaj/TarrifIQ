@@ -194,22 +194,22 @@ export default function Compliance() {
                 <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 20 }}>Substantial transformation and value addition analysis</div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    {[
-                        { title: "Substantial Transformation", desc: "Product underwent change in tariff heading from raw material to finished good", met: true },
-                        { title: "Value Addition Threshold", desc: "Local value addition: 68% (Required: >35%)", met: true },
-                        { title: "Manufacturing Process", desc: "Complete manufacturing from yarn to finished garment", met: true },
-                        { title: "Certificate Validity", desc: "Certificate of Origin expired - renewal required", met: false },
-                    ].map((rule, idx) => (
-                        <div key={idx} style={{ padding: "16px", borderRadius: 8, background: rule.met ? "#f0fdf4" : "#fef2f2", display: "flex", alignItems: "center", justifyContent: "space-between", borderLeft: `4px solid ${rule.met ? "#22c55e" : "#ef4444"}` }}>
-                            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                                {rule.met ? <CheckCircle size={16} color="#22c55e" style={{ marginTop: 2 }} /> : <XCircle size={16} color="#ef4444" style={{ marginTop: 2 }} />}
+                    {(data.rules_of_origin_evaluation || [
+                        { rule_name: "Substantial Transformation", analysis: "Product underwent change in tariff heading from raw material to finished good", status: "Met" },
+                        { rule_name: "Value Addition Threshold", analysis: "Local value addition: 68% (Required: >35%)", status: "Met" },
+                        { rule_name: "Manufacturing Process", analysis: "Complete manufacturing from yarn to finished garment", status: "Met" },
+                        { rule_name: "Certificate Validity", analysis: "Certificate of Origin expired - renewal required", status: "Not Met" },
+                    ]).map((rule: any, idx: number) => (
+                        <div key={idx} style={{ padding: "16px", borderRadius: 8, background: rule.status === "Met" ? "#f0fdf4" : (rule.status === "Not Met" ? "#fef2f2" : "#f8fafc"), display: "flex", alignItems: "center", justifyContent: "space-between", borderLeft: `4px solid ${rule.status === "Met" ? "#22c55e" : (rule.status === "Not Met" ? "#ef4444" : "#94a3b8")}` }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: 1 }}>
+                                {rule.status === "Met" ? <CheckCircle size={16} color="#22c55e" style={{ marginTop: 2, flexShrink: 0 }} /> : (rule.status === "Not Met" ? <XCircle size={16} color="#ef4444" style={{ marginTop: 2, flexShrink: 0 }} /> : <AlertCircle size={16} color="#94a3b8" style={{ marginTop: 2, flexShrink: 0 }} />)}
                                 <div>
-                                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>{rule.title}</div>
-                                    <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{rule.desc}</div>
+                                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>{rule.rule_name}</div>
+                                    <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.4 }}>{rule.analysis}</div>
                                 </div>
                             </div>
-                            <span style={{ fontSize: 10, fontWeight: 800, padding: "4px 10px", borderRadius: 99, background: rule.met ? "#0f172a" : "#ef4444", color: "#fff", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                                {rule.met ? "Met" : "Not Met"}
+                            <span style={{ fontSize: 10, fontWeight: 800, padding: "4px 10px", borderRadius: 99, background: rule.status === "Met" ? "#0f172a" : (rule.status === "Not Met" ? "#ef4444" : "#94a3b8"), color: "#fff", textTransform: "uppercase", letterSpacing: 0.5, marginLeft: 16 }}>
+                                {rule.status}
                             </span>
                         </div>
                     ))}

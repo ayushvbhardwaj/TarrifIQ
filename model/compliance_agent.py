@@ -28,6 +28,53 @@ megallm_client = OpenAI(
 )
 
 
+def _compress_compliance_query(country: str, product_desc: str) -> str:
+    """
+    If the product description is long, use MegaLLM to compress it into
+    a search-optimized query under 300 characters for Tavily.
+    """
+    if len(product_desc) < 100:
+        return (
+            f"Import compliance regulatory requirements certification "
+            f"for {product_desc} in {country} "
+            f"customs rules safety standards labeling requirements"
+        )
+        
+    try:
+        prompt = f"""
+        Extract the core product name and essential technical specifications from this description 
+        to create a highly effective search query for trade compliance and import regulations.
+        
+        Product Description: {product_desc}
+        Destination Country: {country}
+        
+        Rules:
+        - Return ONLY the optimized query string.
+        - The query MUST be under 250 characters.
+        - Focus on keywords like 'import requirements', 'regulations', 'standards'.
+        """
+        
+        response = megallm_client.chat.completions.create(
+            model="gpt-4.1",
+            messages=[
+                {"role": "system", "content": "You are a trade compliance search expert. Output ONLY the optimized search query."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0
+        )
+        optimized_query = response.choices[0].message.content.strip()
+        # Clean up any potential LLM output artifacts
+        optimized_query = optimized_query.replace('"', '').replace("'", "")
+        
+        print(f"✨ Optimized query for Tavily: '{optimized_query[:100]}...'")
+        return optimized_query
+        
+    except Exception as e:
+        print(f"Failed to compress compliance query: {e}")
+        # Fallback: simple truncation with keywords
+        return f"Import compliance {product_desc[:150]} in {country} regulations"
+
+
 def search_compliance_info(country: str, product_desc: str) -> str:
     """
     Search the web using Tavily for compliance, regulatory, 
@@ -38,11 +85,7 @@ def search_compliance_info(country: str, product_desc: str) -> str:
 
     client = TavilyClient(api_key=TAVILY_API_KEY)
     
-    query = (
-        f"Import compliance regulatory requirements certification "
-        f"for {product_desc} in {country} "
-        f"customs rules safety standards labeling requirements"
-    )
+    query = _compress_compliance_query(country, product_desc)
     
     try:
         # We use 'search' with search_depth='advanced' for high-quality results
@@ -93,6 +136,13 @@ Return VALID JSON only in this exact format:
   "product": "{product_desc}",
   "country": "{country}",
   "risk_level": "Low | Medium | High | Critical",
+  "rules_of_origin_evaluation": [
+    {{
+      "rule_name": "Substantial Transformation | Value Addition Threshold | Manufacturing Process | Certificate Validity",
+      "analysis": "Specific analysis of how the product meets or fails this rule",
+      "status": "Met | Not Met | Pending"
+    }}
+  ],
   "compliance_checklist": [
     {{
       "category": "Certifications & Standards | Labelling & Packaging | Customs Documentation | Taxes & Duties | Prohibitions & Restrictions",
@@ -131,11 +181,13 @@ Rules:
         return json.loads(content)
         
     except json.JSONDecodeError as e:
-        print("Invalid JSON returned by MegaLLM:")
-        print(content)
+        print("❌ Invalid JSON returned by MegaLLM:")
+        print(f"--- CONTENT START ---\n{content}\n--- CONTENT END ---")
         return None
     except Exception as e:
-        print(f"MegaLLM request failed: {e}")
+        print(f"❌ MegaLLM request failed: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
