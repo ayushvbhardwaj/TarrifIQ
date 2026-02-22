@@ -168,9 +168,9 @@ def calculate_shipping_cost(origin: str, destination: str, mode: str, weight_kg:
     }
 
 
-def calculate_import_duty(product_value: float, tariff_rate: float) -> float:
-    """import_duty = product_value × (tariff_rate / 100)"""
-    return round(product_value * tariff_rate / 100, 2)
+def calculate_import_duty(base_value: float, tariff_rate: float) -> float:
+    """import_duty = base_value × (tariff_rate / 100)"""
+    return round(base_value * tariff_rate / 100, 2)
 
 
 def calculate_landed_cost(
@@ -182,13 +182,38 @@ def calculate_landed_cost(
     tariff_rate: float,
 ) -> dict:
     """
-    Full landed cost calculation.
+    Full landed cost calculation with detailed breakdown.
     Returns: route, mode, distance_km, distance_factor, weight_kg,
-             shipping_cost, tariff_rate, import_duty, total_landed_cost
+             shipping_cost, insurance_cost, cif_value, tariff_rate, 
+             import_duty, import_vat, gst_cost, cess_cost, 
+             handling_fees, doc_fees, total_landed_cost
     """
     shipping = calculate_shipping_cost(origin, destination, mode, weight_kg)
-    import_duty = calculate_import_duty(product_value, tariff_rate)
-    total = round(product_value + shipping["shipping_cost"] + import_duty, 2)
+    shipping_cost = shipping["shipping_cost"]
+    
+    # Insurance is typically estimated at ~3% of product value
+    insurance_cost = round(product_value * 0.03, 2)
+    
+    # CIF (Cost, Insurance, Freight)
+    cif_value = round(product_value + shipping_cost + insurance_cost, 2)
+    
+    # Duty is applied on CIF
+    import_duty = calculate_import_duty(cif_value, tariff_rate)
+    
+    # Cess is often a surcharge on CIF or Duty. We'll use 1.5% of CIF for this simulation.
+    cess_cost = round(cif_value * 0.015, 2)
+    
+    # VAT and GST are typically assessed on the dutiable value (CIF + Duty + Cess)
+    dutiable_value = cif_value + import_duty + cess_cost
+    
+    # Additional common taxes/fees
+    import_vat = round(dutiable_value * 0.12, 2)  # assumed standard 12%
+    gst_cost = round(dutiable_value * 0.08, 2)    # assumed 8%
+    
+    handling_fees = 200.0
+    doc_fees = 100.0
+
+    total = round(cif_value + import_duty + import_vat + gst_cost + cess_cost + handling_fees + doc_fees, 2)
 
     return {
         "route": f"{_normalize(origin)} → {_normalize(destination)}",
@@ -196,9 +221,17 @@ def calculate_landed_cost(
         "distance_km": shipping["distance_km"],
         "distance_factor": shipping["distance_factor"],
         "weight_kg": weight_kg,
-        "shipping_cost": shipping["shipping_cost"],
+        "product_value": product_value,
+        "shipping_cost": shipping_cost,
+        "insurance_cost": insurance_cost,
+        "cif_value": cif_value,
         "tariff_rate": tariff_rate,
         "import_duty": import_duty,
+        "import_vat": import_vat,
+        "gst_cost": gst_cost,
+        "cess_cost": cess_cost,
+        "handling_fees": handling_fees,
+        "doc_fees": doc_fees,
         "total_landed_cost": total,
     }
 

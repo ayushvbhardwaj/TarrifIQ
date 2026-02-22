@@ -9,7 +9,10 @@ import os
 import sys
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+# Fix for "RuntimeError: Already borrowed" in some environments (especially Mac/uvicorn)
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -80,8 +83,12 @@ class LandedCostRequest(BaseModel):
 
 
 class ComplianceRequest(BaseModel):
-    product_description: str = Field(..., min_length=3)
-    destination: str = Field(..., examples=["USA", "India"])
+    destination: str
+    product_description: str
+
+class VendorRequest(BaseModel):
+    product: str
+    country: str
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -118,10 +125,18 @@ def classify(req: ClassifyRequest):
 
     # LLM reranking
     reranked = None
+    explanations = {}
     try:
         reranked = rerank_with_llm(req.product_description, candidates)
+        if reranked and "candidate_explanations" in reranked:
+            explanations = reranked["candidate_explanations"]
     except Exception as e:
         print(f"LLM reranking failed: {e}")
+
+    # Attach explanation to each candidate
+    for cand in candidates:
+        code = cand.get("hs_code")
+        cand["reasoning"] = explanations.get(code, "Alternative classification based on standard interpretation.")
 
     return {
         "candidates": candidates,
@@ -136,7 +151,7 @@ def landed_cost(req: LandedCostRequest):
     If hs_code is not provided, auto-classifies first.
     """
     from HS_code_search import search, rerank_with_llm
-    from shipping_landed_cost import calculate_landed_cost_live
+    from shipping_landed_cost import calculate_landed_cost_live, compare_origins_live
 
     hs_code = req.hs_code
     classification = None
@@ -190,21 +205,61 @@ def landed_cost(req: LandedCostRequest):
             detail=f"No tariff data found for HS {hs_code} on route {req.origin} → {req.destination}."
         )
 
+    # Calculate scenarios automatically for route optimization
+    scenarios = []
+    try:
+        scenarios = compare_origins_live(
+            hs_code=hs_code,
+            my_country=req.destination,
+            mode=req.mode,
+            weight_kg=req.weight_kg,
+            product_value=req.product_value,
+        )
+        
+        # Add alternative mode for current route
+        alt_mode = "air" if req.mode.lower() == "sea" else "sea"
+        alt_mode_result = calculate_landed_cost_live(
+            origin=req.origin,
+            destination=req.destination,
+            mode=alt_mode,
+            weight_kg=req.weight_kg,
+            product_value=req.product_value,
+            hs_code=hs_code,
+        )
+        
+        combined_scenarios = [result]
+        if alt_mode_result:
+            combined_scenarios.append(alt_mode_result)
+            
+        # Add top 4 alternative scenarios
+        added_count = 0
+        for s in scenarios:
+            s_origin = s["route"].split(" → ")[0].lower().strip()
+            if s_origin != req.origin.lower().strip():
+                combined_scenarios.append(s)
+                added_count += 1
+                if added_count >= 4:
+                    break
+
+    except Exception as e:
+        print(f"Scenario generation failed: {e}")
+        combined_scenarios = [result]
+
     return {
         "hs_code": hs_code,
         "classification": classification,
         "landed_cost": result,
+        "scenarios": combined_scenarios,
     }
 
 
 @app.post("/api/compliance")
 def compliance_check(req: ComplianceRequest):
     """
-    Run the AI compliance agent to fetch real-time rules,
-    certifications, and guidelines for importing a product.
+    Run the AI compliance agent.
     """
     from compliance_agent import run_compliance_check
-
+    
     try:
         result = run_compliance_check(req.destination, req.product_description)
     except Exception as e:
@@ -214,6 +269,104 @@ def compliance_check(req: ComplianceRequest):
         raise HTTPException(status_code=500, detail="Failed to generate compliance report.")
 
     return result
+
+@app.post("/api/vendors")
+def find_vendors(req: VendorRequest):
+    """
+    Run the AI vendor discovery pipeline.
+    """
+    from vendor_finder import run_pipeline
+    vendors = run_pipeline(req.product, req.country)
+    return {"vendors": vendors}
+
+
+@app.get("/api/news")
+def get_news():
+    """
+    Fetch live tariff news and analyze them using the Policy Shock Engine.
+    """
+    from policy_shock_engine import run_policy_shock_from_live_news
+    try:
+        results = run_policy_shock_from_live_news(max_articles=3)
+        return {"news": results}
+    except Exception as e:
+        print(f"Error fetching news: {e}")
+        # Return empty list so frontend can fallback to static samples
+        return {"news": []}
+
+@app.post("/api/parse-document")
+async def parse_document(file: UploadFile = File(...)):
+    """
+    Extract text from a PDF invoice/spec sheet and use MegaLLM to parse
+    the fields needed for the Trade Input form.
+    """
+    import PyPDF2
+    from openai import OpenAI
+    
+    if not file.filename.endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+        
+    try:
+        # Extract text from PDF
+        pdf_reader = PyPDF2.PdfReader(file.file)
+        extracted_text = ""
+        for page in pdf_reader.pages:
+            extracted_text += page.extract_text() + "\n"
+            
+        if not extracted_text.strip():
+            raise HTTPException(status_code=400, detail="No readable text found in PDF.")
+            
+        # Send to MegaLLM for structured extraction
+        MEGALLM_API_KEY = os.getenv("MEGALLM_API_KEY")
+        if not MEGALLM_API_KEY:
+            raise HTTPException(status_code=500, detail="LLM API key not configured.")
+            
+        client = OpenAI(base_url="https://ai.megallm.io/v1", api_key=MEGALLM_API_KEY)
+        
+        prompt = f"""
+        Extract trade and product information from the following document text.
+        Return ONLY a JSON object with these exact keys. If a value is not found, leave it as an empty string "".
+        
+        Keys to extract:
+        - name: The specific product name or title
+        - category: One of ["Electronics & IT", "Apparel & Textiles", "Machinery", "Chemicals", "Food & Beverage", "Automotive Parts", "Medical Devices", "Furniture", "Toys & Games", "Other"]
+        - customCategory: If category is "Other", provide a short 2-3 word category name.
+        - description: A detailed 1-2 sentence description of the product.
+        - material: What it is made of (e.g., 100% Cotton, Aluminum)
+        - intendedUse: What it is used for
+        - value: Total invoice or product value (numbers only, e.g., "5000")
+        - currency: Guess the currency code (e.g. "USD", "EUR")
+        - qty: Number of units (numbers only, e.g. "100")
+        - weight: Total weight in kg (numbers only, e.g. "50.5")
+        - dimensions: L x W x H in cm if available
+        - origin: Country name where it's shipping from
+        - dest: Country name where it's shipping to
+        
+        DOCUMENT TEXT:
+        \"\"\"{extracted_text[:4000]}\"\"\"
+        """
+        
+        response = client.chat.completions.create(
+            model="gpt-4.1",
+            messages=[
+                {"role": "system", "content": "You are a data extraction assistant. Output strictly valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0
+        )
+        
+        import json
+        import re
+        content = response.choices[0].message.content.strip()
+        content = re.sub(r"^```(?:json)?\s*", "", content)
+        content = re.sub(r"\s*```$", "", content)
+        
+        parsed = json.loads(content)
+        return {"extracted_data": parsed}
+        
+    except Exception as e:
+        print(f"Error parsing document: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to parse document: {str(e)}")
 
 
 # ══════════════════════════════════════════════════════════════════

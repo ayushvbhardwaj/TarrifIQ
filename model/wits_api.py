@@ -417,38 +417,18 @@ def get_tariff_rate(
     timeout: int = 15,
 ) -> dict | None:
     """
-    Smart tariff lookup — tries HS-6 granularity first (TRAINS),
-    falls back to product-category average (TradeStats) if unavailable.
-
-    Parameters
-    ----------
-    reporter : str
-        ISO3 code or friendly name of the reporter.
-    partner : str
-        ISO3 code or friendly name of the partner.
-    hs6 : str
-        6-digit HS code.
-    year : int
-        Year to query.
-    indicator : str
-        TradeStats tariff indicator (used only for fallback).
-    timeout : int
-        HTTP request timeout in seconds.
-
-    Returns
-    -------
-    dict | None
-        Dict with: tariff_rate, reporter, partner, hs_code, year, source.
-        source = "trains" | "tradestats-tariff"
+    Smart tariff lookup — tries HS-6 granularity first (TRAINS) across recent years,
+    then falls back to product-category average (TradeStats).
     """
-    # Try TRAINS (HS-6) first
-    result = get_tariff_rate_trains(
-        reporter, partner, hs6, year, timeout=timeout
-    )
-    if result:
-        return result
+    # 1. Try TRAINS (HS-6) for the requested year, and back 2 years if needed
+    for lookup_year in [year, year - 1, year - 2]:
+        result = get_tariff_rate_trains(
+            reporter, partner, hs6, lookup_year, timeout=timeout
+        )
+        if result:
+            return result
 
-    # Fallback to TradeStats (category-level)
+    # 2. Fallback to TradeStats (category-level) for the requested year
     return get_tariff_for_hs_category(
         reporter, partner, hs6, year, indicator=indicator, timeout=timeout
     )
@@ -479,75 +459,48 @@ def get_preferential_tariff(
     timeout: int = 20,
 ) -> dict | None:
     """
-    Get the effectively-applied (preferential) tariff rate for the product
-    category containing a given HS-6 code, with MFN comparison.
-
-    Uses the AHS (Effectively Applied) indicator which reflects any
-    preferential/FTA rates. When no FTA exists between the country pair,
-    AHS equals MFN.
-
-    Parameters
-    ----------
-    reporter : str
-        ISO3 code or friendly name of the importing/reporting country.
-    partner : str
-        ISO3 code or friendly name of the exporting/partner country.
-    hs6 : str
-        6-digit HS code (e.g. "848610").
-    year : int
-        Year to query.
-    timeout : int
-        HTTP request timeout in seconds.
-
-    Returns
-    -------
-    dict | None
-        Dict with: ahs_rate, mfn_rate, preference_margin, has_preference,
-        product_group, product_label, hs_code, reporter, partner, year.
+    Get the effectively-applied (preferential) tariff rate.
+    
+    Tries granular HS-6 (TRAINS) first, falls back to product category average (TradeStats).
     """
     hs6 = str(hs6).strip().zfill(6)
+    
+    # 1. Attempt granular HS-6 lookup via the smart get_tariff_rate function
+    # Note: TradeStats (fallback inside get_tariff_rate) use AHS-WGHTD-AVRG by default.
+    granular = get_tariff_rate(reporter, partner, hs6, year, timeout=timeout)
+    
     group = _hs6_to_product_group(hs6)
-    if not group:
-        print(f"[WITS] Cannot map HS code '{hs6}' to a product group.")
-        return None
+    label = PRODUCT_GROUP_LABELS.get(group, "Unknown Category")
 
-    # Fetch AHS (effectively applied / preferential)
-    ahs_results = get_tradestats_tariff(
-        reporter, partner, year, product=group,
-        indicator="AHS-WGHTD-AVRG", timeout=timeout
-    )
+    if granular:
+        # If we got a result, we enrich it to match the expected format
+        # Granular TRAINS data usually doesn't separate AHS/MFN in one call, 
+        # so for granular we treat its result as the AHS rate.
+        rate = granular["tariff_rate"]
+        
+        # We still fetch MFN from TradeStats for context/margin if possible
+        mfn_results = get_tradestats_tariff(
+            reporter, partner, year, product=group,
+            indicator="MFN-SMPL-AVRG", timeout=timeout
+        )
+        mfn_rate = mfn_results[0]["tariff_rate"] if mfn_results else rate
+        margin = round(max(0, mfn_rate - rate), 4)
 
-    # Fetch MFN for comparison
-    mfn_results = get_tradestats_tariff(
-        reporter, partner, year, product=group,
-        indicator="MFN-WGHTD-AVRG", timeout=timeout
-    )
+        return {
+            "ahs_rate": rate,
+            "mfn_rate": mfn_rate,
+            "preference_margin": margin,
+            "has_preference": margin > 0.01,
+            "product_group": group,
+            "product_label": label,
+            "hs_code": hs6,
+            "reporter": granular["reporter"],
+            "partner": granular["partner"],
+            "year": year,
+            "source": granular["source"],
+        }
 
-    ahs_rate = ahs_results[0]["tariff_rate"] if ahs_results else None
-    mfn_rate = mfn_results[0]["tariff_rate"] if mfn_results else None
-
-    if ahs_rate is None and mfn_rate is None:
-        return None
-
-    reporter_iso3 = _resolve_iso3(reporter)
-    partner_iso3 = _resolve_iso3(partner)
-    label = PRODUCT_GROUP_LABELS.get(group, group)
-
-    margin = round(mfn_rate - ahs_rate, 4) if (mfn_rate is not None and ahs_rate is not None) else 0.0
-
-    return {
-        "ahs_rate": ahs_rate,
-        "mfn_rate": mfn_rate,
-        "preference_margin": margin,
-        "has_preference": margin > 0.01,
-        "product_group": group,
-        "product_label": label,
-        "hs_code": hs6,
-        "reporter": reporter_iso3,
-        "partner": partner_iso3,
-        "year": year,
-        "source": "tradestats-tariff",
-    }
+    return None
 
 
 def get_all_preferential_tariffs(

@@ -28,6 +28,7 @@ export default function Compliance() {
     const [loading, setLoading] = useState(false);
     const [apiData, setApiData] = useState<any>(null);
     const [checks, setChecks] = useState<{ label: string, done: boolean }[]>([]);
+    const [error, setError] = useState<string | null>(null);
 
     const handleExport = () => {
         if (!apiData) return;
@@ -49,12 +50,14 @@ export default function Compliance() {
 
     useEffect(() => {
         if (!origin || !dest || !hsCode) return;
+        if (origin.includes("Select") || dest.includes("Select")) return;
 
         const fetchCompliance = async () => {
             setLoading(true);
             try {
-                const res = await fetch("http://localhost:8000/api/compliance", {
+                const res = await fetch("http://127.0.0.1:8000/api/compliance", {
                     method: "POST",
+                    signal: AbortSignal.timeout(120000),
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         product_description: description,
@@ -71,9 +74,14 @@ export default function Compliance() {
                             done: false
                         })));
                     }
+                    setError(null);
+                } else {
+                    const errorData = await res.json().catch(() => ({ detail: "Unknown server error" }));
+                    setError(errorData.detail || `Error: ${res.status} ${res.statusText}`);
                 }
-            } catch (err) {
+            } catch (err: any) {
                 console.error("Failed to fetch compliance:", err);
+                setError(err.name === "TimeoutError" ? "Request timed out. The AI is still working, please try again." : err.message);
             } finally {
                 setLoading(false);
             }
@@ -125,6 +133,11 @@ export default function Compliance() {
                 {loading && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#059669', fontSize: 13, fontWeight: 600 }}>
                         <RefreshCw size={14} className="animate-spin-slow" /> Running compliance checks...
+                    </div>
+                )}
+                {error && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#dc2626', fontSize: 13, fontWeight: 600, background: '#fef2f2', padding: '8px 16px', borderRadius: 8, border: '1px solid #fecaca' }}>
+                        <AlertCircle size={14} /> {error}
                     </div>
                 )}
             </div>

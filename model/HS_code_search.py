@@ -123,6 +123,10 @@ Return JSON in exactly this format:
     "exclusion_of_alternatives": "",
     "information_gaps": "",
     "final_justification": ""
+  }},
+  "candidate_explanations": {{
+    "1234.56": "Brief reasoning why this code is or isn't a good match",
+    "7890.12": "Brief reasoning..."
   }}
 }}
 """

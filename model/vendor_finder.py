@@ -22,6 +22,32 @@ TAVILY_API_KEY = os.getenv("TAVILLY_API_KEY")
 TAVILY_ENDPOINT = "https://api.tavily.com/search"
 
 
+def _extract_core_product_name(product_desc: str) -> str:
+    """
+    If the product description is very long (like a full spec sheet or invoice entry),
+    extract just the core 2-4 word product name using MegaLLM so Tavily searches work properly.
+    """
+    if len(product_desc) < 40:
+        return product_desc
+        
+    try:
+        response = megallm_client.chat.completions.create(
+            model="gpt-4.1",
+            messages=[
+                {"role": "system", "content": "You are a search query optimizer. Extract the core 2-4 word product name from the following long description. Do not include any adjectives about grade, quality, or use cases. Return ONLY the short product name, nothing else."},
+                {"role": "user", "content": product_desc}
+            ],
+            temperature=0
+        )
+        core_name = response.choices[0].message.content.strip()
+        # Remove any quotes the LLM might have added
+        core_name = core_name.replace('"', '').replace("'", "")
+        return core_name
+    except Exception as e:
+        print(f"Failed to extract core product name: {e}")
+        # Fallback: just take the first 5 words
+        return " ".join(product_desc.split()[:5])
+
 def _extract_root_name(url: str) -> str:
     """
     Extract root company name from URL.
@@ -101,7 +127,7 @@ def discover_vendors(product: str, country: str) -> list[dict]:
             "include_answer": False,
             "include_images": False,
             "include_raw_content": False,
-            "max_results": 5,
+            "max_results": 3,
             "exclude_domains": [
                 "wikipedia.org", "amazon.com", "amazon.in",
                 "alibaba.com", "aliexpress.com", "ebay.com",
@@ -143,7 +169,7 @@ def discover_vendors(product: str, country: str) -> list[dict]:
             }
             unique_vendors.append(vendor)
             
-            if len(unique_vendors) >= 5:
+            if len(unique_vendors) >= 2:
                 break
 
     return unique_vendors
@@ -167,12 +193,12 @@ def get_tavily_evidence(company: str, product: str) -> str:
         payload = {
             "api_key": TAVILY_API_KEY,
             "query": query,
-            "search_depth": "advanced",
-            "max_results": 3,
+            "search_depth": "basic",
+            "max_results": 2,
         }
 
         try:
-            response = requests.post(TAVILY_ENDPOINT, json=payload, timeout=15)
+            response = requests.post(TAVILY_ENDPOINT, json=payload, timeout=10)
             response.raise_for_status()
             results = response.json().get("results", [])
             
@@ -274,8 +300,12 @@ def run_pipeline(product: str, country: str) -> list[dict]:
     """
     (D) Phase 4: Orchestrate the Discovery -> Evidence -> Verification pipeline.
     """
-    print(f"🔍 [Phase 1] Discovering top vendors for '{product}' in {country}...")
-    vendors = discover_vendors(product, country)
+    core_product = _extract_core_product_name(product)
+    if core_product != product:
+        print(f"🔍 Extracted core product for search: '{core_product}'")
+        
+    print(f"🔍 [Phase 1] Discovering top vendors for '{core_product}' in {country}...")
+    vendors = discover_vendors(core_product, country)
     
     if not vendors:
         print("❌ No vendors discovered.")
@@ -289,18 +319,15 @@ def run_pipeline(product: str, country: str) -> list[dict]:
         company_name = v.get("name", "Unknown Company")
         print(f"\n   [{i+1}/{len(vendors)}] Evaluating: {company_name}")
         
-        # Gather deep evidence
-        print("      -> Gathering Tavily evidence...")
-        evidence = get_tavily_evidence(company=company_name, product=product)
+        # Gather deep evidence using the core product name
+        evidence = get_tavily_evidence(company=company_name, product=core_product)
         
         if not evidence.strip():
-            print("      -> No evidence found, skipping deeper verification.")
             v["verification"] = {"error": "No external evidence found."}
             final_list.append(v)
             continue
             
         # Verify with LLM
-        print("      -> Verifying company profile with MegaLLM...")
         verdict = verify_vendor_with_llm(product, country, vendor=v, evidence=evidence)
         
         # Attach verdict

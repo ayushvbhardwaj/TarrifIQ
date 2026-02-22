@@ -153,6 +153,12 @@ def run_compliance_check(country: str, product_desc: str) -> dict | None:
         print("❌ Failed to retrieve web context.")
         return None
         
+    # Truncate context to avoid token overflow or excessive synthesis time
+    MAX_CHARS = 7000
+    if len(context) > MAX_CHARS:
+        print(f"⚠️ Truncating context from {len(context)} to {MAX_CHARS} chars.")
+        context = context[:MAX_CHARS] + "..."
+
     print(f"🧠 Synthesizing {len(context)} characters of context with MegaLLM...")
     checklist = generate_compliance_checklist(country, product_desc, context)
     
